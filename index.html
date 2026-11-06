@@ -8,12 +8,12 @@
   <!-- 手機 App 專屬全螢幕模式 (Standalone PWA) -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="指數投資">
+  <meta id="appMobileTitle" name="apple-mobile-web-app-title" content="指數投資">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#090d16">
 
-  <!-- 專屬高解析度 App Icon -->
-  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+  <!-- 專屬高解析度 App Icon (正式與 BETA 智慧切換) -->
+  <link id="appIconTouch" rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
   <link rel="manifest" href="./manifest.json">
@@ -65,15 +65,15 @@
     <div class="flex items-center justify-between">
       <!-- App Icon 與 標題 -->
       <div class="flex items-center space-x-3">
-        <div class="relative w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/20 flex-shrink-0 border border-emerald-500/30">
-          <img src="./apple-touch-icon.png" alt="App Icon" class="w-full h-full object-cover">
+        <div id="headerIconWrap" class="relative w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/20 flex-shrink-0 border border-emerald-500/30">
+          <img id="headerAppIcon" src="./apple-touch-icon.png" alt="App Icon" class="w-full h-full object-cover">
         </div>
         <div>
           <div class="flex items-center space-x-1.5">
-            <h1 class="text-base font-bold tracking-tight text-white">指數投資 Portfolio</h1>
-            <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/30">LIVE</span>
+            <h1 id="headerAppTitle" class="text-base font-bold tracking-tight text-white">指數投資 Portfolio</h1>
+            <span id="headerEnvBadge" class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/30">LIVE</span>
           </div>
-          <p class="text-[11px] text-slate-400">Google 試算表即時連線</p>
+          <p id="headerAppSubtitle" class="text-[11px] text-slate-400">Google 試算表即時連線</p>
         </div>
       </div>
 
@@ -465,6 +465,46 @@
        JavaScript 核心互動
        =============================== -->
   <script>
+    // === 智慧環境辨識 (本機 WiFi / Localhost 自動啟用 BATE 模式，線上 GitHub 自動為 LIVE 正式版) ===
+    const isBetaMode = (
+      location.hostname === 'localhost' ||
+      location.hostname === '127.0.0.1' ||
+      location.hostname.startsWith('192.168.') ||
+      location.hostname.startsWith('10.') ||
+      location.port === '5500' ||
+      location.search.includes('beta=1')
+    );
+
+    if (isBetaMode) {
+      document.title = '投資測試 (BETA)';
+      const touchIcon = document.getElementById('appIconTouch');
+      if (touchIcon) touchIcon.href = './apple-touch-icon-beta.png';
+      const metaTitle = document.getElementById('appMobileTitle');
+      if (metaTitle) metaTitle.content = '投資測試 bate';
+
+      window.addEventListener('DOMContentLoaded', () => {
+        const iconWrap = document.getElementById('headerIconWrap');
+        if (iconWrap) iconWrap.className = 'relative w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-amber-500/20 flex-shrink-0 border border-amber-500/40';
+        const iconImg = document.getElementById('headerAppIcon');
+        if (iconImg) iconImg.src = './apple-touch-icon-beta.png';
+        const titleEl = document.getElementById('headerAppTitle');
+        if (titleEl) {
+          titleEl.innerText = '投資測試 (BETA)';
+          titleEl.className = 'text-base font-bold tracking-tight text-amber-400';
+        }
+        const badgeEl = document.getElementById('headerEnvBadge');
+        if (badgeEl) {
+          badgeEl.innerText = 'BATE';
+          badgeEl.className = 'text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold border border-amber-500/40';
+        }
+        const subEl = document.getElementById('headerAppSubtitle');
+        if (subEl) {
+          subEl.innerText = `WiFi 本機測試 (${location.hostname})`;
+          subEl.className = 'text-[11px] text-amber-300/80';
+        }
+      });
+    }
+
     let GAS_API_URL = localStorage.getItem('INVEST_GAS_API_URL') || '';
 
     let currentType = '買進';
