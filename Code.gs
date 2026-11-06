@@ -1,10 +1,9 @@
 /**
  * 指數型投資紀錄 - 手機專屬 APP 後端腳本
- * 支援：新增 (Create)、讀取 (Read)、修改 (Update)、刪除 (Delete) 全功能 CRUD
+ * 支援：總資產儀表板、個別持股明細 (損益/成本/市值)、歷史紀錄全功能 CRUD
  */
 
 function doGet(e) {
-  // 外部前端 (GitHub Pages) GET 請求
   if (e && e.parameter && e.parameter.action === 'getData') {
     const data = getInitialData();
     return ContentService.createTextOutput(JSON.stringify(data))
@@ -18,9 +17,6 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/**
- * 接收外部前端 (GitHub Pages) POST 請求
- */
 function doPost(e) {
   try {
     let payload = {};
@@ -50,7 +46,7 @@ function doPost(e) {
 }
 
 /**
- * 取得 App 首頁資產儀表板與交易明細 (含列號 rowIndex 供編輯與刪除)
+ * 取得 App 首頁資產儀表板、個別持股明細、歷史紀錄
  */
 function getInitialData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -59,8 +55,69 @@ function getInitialData() {
   let totalCost = 0;
   let totalMarketValue = 0;
   let returnRate = 0;
+  const holdings = [];
 
-  // 1. 讀取資產總覽
+  // 1. 從「歷史交易明細」統計各標的真實累計台幣成本
+  const twdCostMap = {};
+  const recentRecords = [];
+  try {
+    const txSheet = ss.getSheetByName('歷史交易明細');
+    if (txSheet && txSheet.getLastRow() >= 6) {
+      const txData = txSheet.getRange(6, 1, txSheet.getLastRow() - 5, 10).getValues();
+      
+      // 計算累計台幣成本
+      for (let i = 0; i < txData.length; i++) {
+        const ticker = txData[i][1];
+        const cost = txData[i][9]; // J欄: 折合台幣總成本
+        if (ticker && typeof cost === 'number') {
+          twdCostMap[ticker] = (twdCostMap[ticker] || 0) + cost;
+        }
+      }
+
+      // 抓取最近 30 筆交易明細（倒序）
+      for (let i = txData.length - 1; i >= 0 && recentRecords.length < 30; i--) {
+        const row = txData[i];
+        const dateVal = row[0];
+        const ticker = row[1];
+        const type = row[3];
+        
+        if (ticker && type) {
+          let dateStr = '';
+          let rawDate = '';
+          if (dateVal instanceof Date) {
+            dateStr = Utilities.formatDate(dateVal, Session.getScriptTimeZone(), 'yyyy/MM/dd');
+            rawDate = Utilities.formatDate(dateVal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+          } else {
+            dateStr = String(dateVal || '');
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+              rawDate = `${parts[0]}-${String(parts[1]).padStart(2, '0')}-${String(parts[2]).padStart(2, '0')}`;
+            } else {
+              rawDate = dateStr;
+            }
+          }
+
+          recentRecords.push({
+            rowIndex: 6 + i,
+            date: dateStr,
+            rawDate: rawDate,
+            ticker: ticker,
+            market: row[2] || '台股',
+            type: type,
+            price: Number(row[4]) || 0,
+            shares: Number(row[5]) || 0,
+            fee: Number(row[6]) || 0,
+            exchangeRate: Number(row[8]) || 1,
+            twdCost: Number(row[9]) || 0
+          });
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('統計歷史交易錯誤: ' + e);
+  }
+
+  // 2. 從「資產總覽與總報酬」讀取即時資產數據與各標的細項
   try {
     const overviewSheet = ss.getSheetByName('資產總覽與總報酬');
     if (overviewSheet) {
@@ -75,62 +132,56 @@ function getInitialData() {
 
       const retVal = overviewSheet.getRange('C20').getValue();
       if (typeof retVal === 'number') returnRate = retVal;
-    }
-  } catch (e) {
-    Logger.log('讀取總覽錯誤: ' + e);
-  }
 
-  // 2. 讀取歷史交易明細（取得最近 30 筆有效交易）
-  const recentRecords = [];
-  try {
-    const sheet = ss.getSheetByName('歷史交易明細');
-    if (sheet) {
-      const lastRow = sheet.getLastRow();
-      if (lastRow >= 6) {
-        const data = sheet.getRange(6, 1, lastRow - 5, 10).getValues();
-        // 由新到舊倒序抓取
-        for (let i = data.length - 1; i >= 0 && recentRecords.length < 30; i--) {
-          const row = data[i];
-          const dateVal = row[0];
-          const ticker = row[1];
-          const type = row[3];
-          
-          if (ticker && type) {
-            let dateStr = '';
-            let rawDate = '';
-            if (dateVal instanceof Date) {
-              dateStr = Utilities.formatDate(dateVal, Session.getScriptTimeZone(), 'yyyy/MM/dd');
-              rawDate = Utilities.formatDate(dateVal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-            } else {
-              dateStr = String(dateVal || '');
-              // 嘗試轉為 yyyy-mm-dd
-              const parts = dateStr.split('/');
-              if (parts.length === 3) {
-                rawDate = `${parts[0]}-${String(parts[1]).padStart(2, '0')}-${String(parts[2]).padStart(2, '0')}`;
-              } else {
-                rawDate = dateStr;
-              }
-            }
+      // 讀取第 6 列到第 15 列的各標的部位資訊
+      // A:標的, B:市場, C:總股數, D:總投入成本(原幣), E:持股淨成本, F:現價, G:總市值(原幣), H:總市值(TWD), I:目標權重配置, J:目標權重, K:實際權重
+      const stockData = overviewSheet.getRange('A6:K15').getValues();
+      for (let i = 0; i < stockData.length; i++) {
+        const row = stockData[i];
+        const ticker = row[0];
+        const market = row[1];
+        if (!ticker) continue;
 
-            recentRecords.push({
-              rowIndex: 6 + i, // 記錄真實列號，方便定位修改或刪除
-              date: dateStr,
-              rawDate: rawDate,
-              ticker: ticker,
-              market: row[2] || '台股',
-              type: type,
-              price: Number(row[4]) || 0,
-              shares: Number(row[5]) || 0,
-              fee: Number(row[6]) || 0,
-              exchangeRate: Number(row[8]) || 1,
-              twdCost: Number(row[9]) || 0
-            });
-          }
+        const shares = Number(row[2]) || 0;
+        const costOrig = Number(row[3]) || 0;
+        const avgCostOrig = Number(row[4]) || 0;
+        const price = Number(row[5]) || 0;
+        const marketValueOrig = Number(row[6]) || 0;
+        const marketValueTwd = Number(row[7]) || 0;
+        const weight = Number(row[10]) || 0;
+
+        // 台幣歷史總成本與未實現損益
+        const costTwd = twdCostMap[ticker] !== undefined 
+          ? twdCostMap[ticker] 
+          : (market === '台股' ? costOrig : costOrig * usdRate);
+
+        const profitTwd = marketValueTwd - costTwd;
+        let profitRate = 0;
+        if (costTwd > 0) {
+          profitRate = (profitTwd / costTwd) * 100;
+        } else if (costTwd < 0) {
+          // 已實現獲利超過成本時成本為負
+          profitRate = profitTwd > 0 ? 100 : 0;
         }
+
+        holdings.push({
+          ticker: ticker,
+          market: market,
+          shares: shares,
+          price: price,
+          costOrig: costOrig,
+          avgCostOrig: avgCostOrig,
+          marketValueOrig: marketValueOrig,
+          marketValueTwd: marketValueTwd,
+          costTwd: costTwd,
+          profitTwd: profitTwd,
+          profitRate: profitRate,
+          weight: weight * 100 // 轉為百分比 (例如 18.5)
+        });
       }
     }
   } catch (e) {
-    Logger.log('讀取明細錯誤: ' + e);
+    Logger.log('讀取總覽錯誤: ' + e);
   }
 
   return {
@@ -138,6 +189,7 @@ function getInitialData() {
     totalCost: totalCost,
     totalMarketValue: totalMarketValue,
     returnRate: returnRate,
+    holdings: holdings,
     recentRecords: recentRecords
   };
 }
@@ -208,7 +260,7 @@ function addTransaction(record) {
 }
 
 /**
- * 修改既有交易紀錄
+ * 修改交易紀錄
  */
 function updateTransaction(record) {
   try {
@@ -256,7 +308,7 @@ function updateTransaction(record) {
 }
 
 /**
- * 刪除指定交易紀錄
+ * 刪除交易紀錄
  */
 function deleteTransaction(rowIndex) {
   try {
@@ -271,7 +323,6 @@ function deleteTransaction(rowIndex) {
       return { success: false, message: `無法刪除無效的列號 (第 ${r} 列)` };
     }
 
-    // 取得即將被刪除的標的名稱供提示回傳
     const ticker = sheet.getRange(r, 2).getValue();
     const type = sheet.getRange(r, 4).getValue();
 
