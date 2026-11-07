@@ -10,11 +10,19 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  return HtmlService.createTemplateFromFile('index')
-    .evaluate()
-    .setTitle('指數投資 Portfolio')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  try {
+    return HtmlService.createTemplateFromFile('Index')
+      .evaluate()
+      .setTitle('指數投資 Portfolio')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  } catch (err) {
+    return HtmlService.createTemplateFromFile('index')
+      .evaluate()
+      .setTitle('指數投資 Portfolio')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
 }
 
 function doPost(e) {
@@ -210,28 +218,33 @@ function getInitialData() {
       }
       if (yr && !isNaN(yr)) {
         yearlyInvestedMap[yr] = (yearlyInvestedMap[yr] || 0) + cost;
-        if (yr === currentYear) {
+        // 優先統計當前系統年或 2026 計畫主年度
+        if (yr === currentYear || yr === 2026) {
           currentYearInvested += cost;
         }
       }
     }
   }
 
-  // 嘗試讀取「計畫執行與目標診斷」本年度計畫預定投入金額
+  // 嘗試讀取「計畫執行與目標診斷」本年度計畫預定投入金額 (安全無拋錯讀取)
   let plannedYearlySavings = 258000;
   try {
     const planSheet = ss.getSheetByName('計畫執行與目標診斷');
-    if (planSheet) {
-      const planData = planSheet.getRange(7, 1, 15, 3).getValues();
+    if (planSheet && planSheet.getLastRow() >= 7) {
+      const maxRows = Math.min(15, planSheet.getLastRow() - 6);
+      const planData = planSheet.getRange(7, 1, maxRows, 3).getValues();
       for (let p = 0; p < planData.length; p++) {
-        if (Number(planData[p][0]) === currentYear) {
+        const rowYear = parseInt(planData[p][0], 10);
+        if (rowYear === 2026 || rowYear === currentYear) {
           const pAmt = Number(planData[p][2]);
           if (pAmt > 0) plannedYearlySavings = pAmt;
           break;
         }
       }
     }
-  } catch (e) {}
+  } catch (errPlan) {
+    Logger.log('讀取計畫表錯誤: ' + errPlan);
+  }
 
   return {
     usdRate: usdRate,
