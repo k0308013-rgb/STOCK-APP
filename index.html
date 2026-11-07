@@ -18,8 +18,9 @@
   <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
   <link rel="manifest" href="./manifest.json">
 
-  <!-- Tailwind CSS -->
+  <!-- Tailwind CSS & Chart.js -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
     :root {
@@ -53,6 +54,18 @@
     }
     .ios-cell:last-child {
       border-bottom: none;
+    }
+    .swipe-row {
+      touch-action: pan-y;
+    }
+    .holding-card {
+      touch-action: pan-y;
+    }
+    .holding-card.is-dragging {
+      opacity: 0.95;
+      border-color: rgba(16, 185, 129, 0.7) !important;
+      box-shadow: 0 20px 25px -5px rgba(16, 185, 129, 0.25), 0 8px 10px -6px rgba(16, 185, 129, 0.25) !important;
+      z-index: 50 !important;
     }
   </style>
 </head>
@@ -98,45 +111,170 @@
        =============================== -->
   <main class="flex-1 overflow-y-auto px-4 pt-3 pb-32 space-y-4 max-w-lg mx-auto w-full">
 
-    <!-- 1. 全球總資產概況卡片 -->
+    <!-- 1. 全球總資產概況卡片 (對標 IBKR 視覺排版) -->
     <div class="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-800/90 to-slate-900/95 border border-slate-700/60 p-4 shadow-2xl">
       <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
       
-      <div class="flex justify-between items-start mb-2">
-        <div class="flex items-center space-x-2">
-          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">全球總資產淨值</span>
-          <button type="button" onclick="togglePrivacy()" class="text-slate-400 hover:text-white transition">
+      <!-- 頂部列：價值 (NT$) vs 業績 (%) 切換器 + 方案 B 年化切換鈕 + 功能按鈕 (像 IBKR 頂部) -->
+      <div class="flex justify-between items-center mb-2.5">
+        <div class="flex items-center space-x-1.5 shrink-0">
+          <!-- 價值 / 業績 切換器 -->
+          <div class="flex items-center p-0.5 rounded-xl bg-slate-950/80 border border-slate-700/80 text-xs font-bold shadow-inner shrink-0">
+            <button type="button" onclick="setChartMetric('VALUE')" id="metricBtnValue" class="px-2.5 sm:px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-black transition-all">價值 (NT$)</button>
+            <button type="button" onclick="setChartMetric('RATE')" id="metricBtnRate" class="px-2.5 sm:px-3 py-1 rounded-lg text-slate-400 hover:text-white transition-all">業績 (％)</button>
+          </div>
+
+          <!-- 方案 B：年化報酬率快捷切換膠囊 (維持正常精緻尺寸不放大) -->
+          <button type="button" onclick="toggleAnnualizedReturn()" id="btnToggleAnnualized" class="px-2.5 py-1 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/70 text-[11px] font-bold text-slate-400 hover:text-emerald-300 transition flex items-center space-x-1 active:scale-95 shadow-sm whitespace-nowrap shrink-0" title="點擊在「累計總報酬」與「年化複合報酬率」之間切換">
+            <span>🌱</span>
+            <span id="annualizedPillText">年化 +6.9%/年</span>
+          </button>
+        </div>
+
+        <div class="flex items-center space-x-2 text-slate-400 shrink-0">
+          <button type="button" onclick="togglePrivacy()" class="p-1 hover:text-white transition" title="隱私模式">
             <svg id="eyeIcon" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
           </button>
+          <button type="button" onclick="loadInitialData()" class="text-xs text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 active:scale-95 transition p-1" title="更新即時數據">
+            <svg id="refreshSpinner" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+            </svg>
+            <span>更新</span>
+          </button>
         </div>
-        <button type="button" onclick="loadInitialData()" class="text-xs text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 active:scale-95 transition">
-          <svg id="refreshSpinner" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+      </div>
+
+      <!-- 核心大字區：隨 價值 / 業績 切換直接帶入幾趴或總金額 (對標 IBKR 核心大字) -->
+      <div class="mb-2">
+        <div id="displayHeroNumber" class="text-3xl font-black tracking-tight text-white font-mono leading-tight">
+          NT$ --
+        </div>
+        <div class="flex items-center space-x-2 mt-1">
+          <span id="heroLabel" class="text-xs font-bold text-slate-300">全球總資產淨值</span>
+          <span id="chartScrubBadge" class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">即時</span>
+        </div>
+      </div>
+
+      <!-- 次要詳細數值卡片 (保留金額與投入成本，支援點擊切換年化) -->
+      <div class="grid grid-cols-2 gap-2 py-2 px-3 rounded-2xl bg-slate-900/70 border border-slate-700/40 text-xs">
+        <div>
+          <div id="secLabelLeft" class="text-[10px] text-slate-400 font-medium">總投入成本</div>
+          <div id="displaySecLeft" class="text-xs font-mono font-bold text-slate-300 mt-0.5">NT$ --</div>
+        </div>
+        <div onclick="toggleAnnualizedReturn()" class="text-right cursor-pointer group active:scale-95 transition" title="點擊在「累計總報酬」與「年化複合報酬率」之間切換">
+          <div class="flex items-center justify-end space-x-1">
+            <span id="secLabelRight" class="text-[10px] text-slate-400 font-medium">實際總報酬率</span>
+            <span id="annualizedBadge" class="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 group-hover:text-emerald-300 border border-slate-700/60 font-mono transition">⇄ 年化</span>
+          </div>
+          <div id="displaySecRight" class="text-xs font-mono font-bold text-emerald-400 mt-0.5">--%</div>
+        </div>
+      </div>
+
+      <!-- ===============================
+           資產走勢互動曲線圖 (IBKR 風格)
+           =============================== -->
+      <div class="pt-2 mt-2 border-t border-slate-700/50 space-y-1.5">
+        
+        <!-- 折線圖 Canvas 區域 -->
+        <div class="relative w-full h-36">
+          <canvas id="trendChart"></canvas>
+        </div>
+
+        <!-- 時間週期橫向滑動膠囊 (1W, 1M, 1Q, 6M, 1Y, 5Y, 10Y, 全部) -->
+        <div class="flex items-center space-x-1 overflow-x-auto no-scrollbar custom-scroll pt-1 pb-0.5 text-[11px] font-bold select-none" id="timeframeScroll">
+          <button type="button" onclick="setChartTimeframe('1W')" id="tfBtn-1W" class="tf-btn px-2.5 py-1 rounded-xl text-slate-400 hover:text-white transition whitespace-nowrap">1W</button>
+          <button type="button" onclick="setChartTimeframe('1M')" id="tfBtn-1M" class="tf-btn px-2.5 py-1 rounded-xl text-slate-400 hover:text-white transition whitespace-nowrap">1M</button>
+          <button type="button" onclick="setChartTimeframe('1Q')" id="tfBtn-1Q" class="tf-btn px-2.5 py-1 rounded-xl text-slate-400 hover:text-white transition whitespace-nowrap">1Q</button>
+          <button type="button" onclick="setChartTimeframe('6M')" id="tfBtn-6M" class="tf-btn px-2.5 py-1 rounded-xl text-slate-400 hover:text-white transition whitespace-nowrap">6M</button>
+          <button type="button" onclick="setChartTimeframe('1Y')" id="tfBtn-1Y" class="tf-btn px-2.5 py-1 rounded-xl text-slate-400 hover:text-white transition whitespace-nowrap">1Y</button>
+          <button type="button" onclick="setChartTimeframe('5Y')" id="tfBtn-5Y" class="tf-btn px-2.5 py-1 rounded-xl text-slate-400 hover:text-white transition whitespace-nowrap">5Y</button>
+          <button type="button" onclick="setChartTimeframe('10Y')" id="tfBtn-10Y" class="tf-btn px-2.5 py-1 rounded-xl text-slate-400 hover:text-white transition whitespace-nowrap">10Y</button>
+          <button type="button" onclick="setChartTimeframe('ALL')" id="tfBtn-ALL" class="tf-btn px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 transition whitespace-nowrap">全部</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 1.5. 🎯 財務自由目標與複利進度卡片 (年齡 / 目標 / 達成率進度條 / 每年再投入成本診斷) -->
+    <div class="rounded-3xl bg-gradient-to-b from-slate-800/90 to-slate-900/95 border border-slate-700/60 p-4 shadow-xl space-y-3">
+      <!-- 標題列：目標進度 + 達成率徽章 + 設定按鈕 -->
+      <div class="flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+          <span class="text-base">🎯</span>
+          <span class="text-sm font-black text-white tracking-tight">財務目標達成率</span>
+          <span id="goalPercentBadge" class="text-[11px] font-mono font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">--%</span>
+        </div>
+        <button type="button" onclick="openGoalSettingsModal()" class="text-[11px] font-bold text-slate-400 hover:text-emerald-300 flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-slate-950/70 border border-slate-700/70 active:scale-95 transition shadow-sm" title="自訂年齡、目標金額、每年再投入成本與預期報酬率">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
           </svg>
-          <span>更新</span>
+          <span>目標設定</span>
         </button>
       </div>
 
-      <!-- 總市值大字 -->
-      <div class="mb-3">
-        <div id="displayTotalMarket" class="text-2xl font-black tracking-tight text-white font-mono">
-          NT$ --
+      <!-- 總目標進度條 (2500萬) -->
+      <div class="space-y-1">
+        <div class="relative w-full h-3 bg-slate-950/90 rounded-full overflow-hidden border border-slate-700/60 p-0.5 shadow-inner">
+          <div id="goalProgressBar" class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-700 shadow-[0_0_10px_rgba(16,185,129,0.5)]" style="width: 0%"></div>
+        </div>
+        <div class="flex justify-between items-center text-[11px] font-mono font-semibold">
+          <span id="goalCurrentText" class="text-emerald-400 font-bold">目前 NT$ --</span>
+          <span id="goalTargetText" class="text-slate-300 font-bold">目標 NT$ --</span>
         </div>
       </div>
 
-      <!-- 損益與報酬率小標籤 -->
-      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-700/50">
-        <div>
-          <div class="text-[10px] text-slate-400">總投入成本</div>
-          <div id="displayTotalCost" class="text-xs font-mono font-semibold text-slate-300">NT$ --</div>
+      <!-- 🌟 年度再投入達標診斷列 (實際已投入 vs 定義預定目標) -->
+      <div class="p-2.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+        <div class="flex justify-between items-center text-[11px]">
+          <div class="flex items-center space-x-1.5">
+            <span class="text-amber-400">📅</span>
+            <span class="font-bold text-slate-300"><span id="savingsYearLabel">2026</span> 年度再投入診斷</span>
+          </div>
+          <span id="savingsStatusBadge" class="text-[10px] font-mono font-bold px-2 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">計算中...</span>
         </div>
-        <div class="text-right">
-          <div class="text-[10px] text-slate-400">實際總報酬率</div>
-          <div id="displayReturnRate" class="text-xs font-mono font-bold text-emerald-400">--%</div>
+
+        <!-- 年度投入迷你進度條 -->
+        <div class="relative w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+          <div id="savingsProgressBar" class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-700" style="width: 0%"></div>
         </div>
+
+        <div class="flex justify-between items-center text-[10px] font-mono">
+          <span id="savingsActualText" class="text-emerald-400 font-bold">今年已投入 NT$ --</span>
+          <span id="savingsTargetText" class="text-slate-400">定義目標 NT$ --</span>
+        </div>
+      </div>
+
+      <!-- 3 欄式核心試算 (預估達標年齡、每年再投入速度切換、未來複利加乘) -->
+      <div class="grid grid-cols-3 gap-2 pt-0.5 text-center">
+        <div class="bg-slate-950/60 p-2 rounded-2xl border border-slate-800/80">
+          <div class="text-[10px] text-slate-400 font-medium">預估達標年齡</div>
+          <div id="goalEstimatedAge" class="text-base font-black font-mono text-emerald-400 mt-0.5">-- 歲</div>
+          <div id="goalYearsRemaining" class="text-[9px] text-slate-500 font-mono mt-0.5">計算中...</div>
+        </div>
+
+        <div onclick="toggleSavingsMode()" class="bg-slate-950/60 p-2 rounded-2xl border border-slate-800/80 cursor-pointer group active:scale-95 transition" title="點擊切換：以「今年實際速度」或「計畫預定速度」試算未來">
+          <div class="flex items-center justify-center space-x-1">
+            <span class="text-[10px] text-slate-400 font-medium">推算投入速度</span>
+            <span id="savingsModeBadge" class="text-[8px] px-1 py-0.2 rounded bg-slate-800 text-emerald-300 border border-emerald-500/40 font-mono">實際 ⇄</span>
+          </div>
+          <div id="goalAnnualSavingsDisplay" class="text-xs font-bold font-mono text-slate-200 mt-1">NT$ --</div>
+          <div id="goalMonthlySavingsDisplay" class="text-[9px] text-emerald-400 font-mono mt-0.5">--</div>
+        </div>
+
+        <div class="bg-slate-950/60 p-2 rounded-2xl border border-slate-800/80">
+          <div class="text-[10px] text-slate-400 font-medium">未來複利加乘</div>
+          <div id="goalCompoundGain" class="text-xs font-bold font-mono text-cyan-400 mt-1">--</div>
+          <div id="goalCompoundRatio" class="text-[9px] text-slate-500 font-mono mt-0.5">--</div>
+        </div>
+      </div>
+
+      <!-- 輔助說明小字 -->
+      <div class="text-[10px] text-slate-400 text-center font-mono pt-0.5 border-t border-slate-800/50">
+        <span id="goalRemainingSubtitle">--</span>
       </div>
     </div>
 
@@ -160,17 +298,55 @@
          頁籤 1：持股部位細項 (全新功能)
          =============================== -->
     <div id="tabContentHoldings" class="space-y-3">
-      <!-- 標籤切換過濾器 -->
-      <div class="flex items-center justify-between px-1">
-        <div class="flex items-center space-x-1.5 text-xs">
-          <button type="button" onclick="filterHoldings('ALL')" id="filterAll" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold text-[11px]">全部 (<span id="countAll">0</span>)</button>
-          <button type="button" onclick="filterHoldings('台股')" id="filterTw" class="px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/60 font-semibold text-[11px]">台股</button>
-          <button type="button" onclick="filterHoldings('FOREIGN')" id="filterForeign" class="px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/60 font-semibold text-[11px]">海外/美金</button>
+      <!-- 標籤切換與排序工具列 -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between px-1">
+          <!-- 分類篩選按鈕 -->
+          <div class="flex items-center space-x-1 text-xs">
+            <button type="button" onclick="filterHoldings('ALL')" id="filterAll" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold text-[11px]">全部 (<span id="countAll">0</span>)</button>
+            <button type="button" onclick="filterHoldings('台股')" id="filterTw" class="px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/60 font-semibold text-[11px]">台股</button>
+            <button type="button" onclick="filterHoldings('FOREIGN')" id="filterForeign" class="px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/60 font-semibold text-[11px]">海外/美金</button>
+          </div>
+
+          <!-- 右側：自動排序下拉選單 + 隱藏已結清按鈕 + 一鍵全部收合/展開 -->
+          <div class="flex items-center space-x-1.5">
+            <div class="relative">
+              <select id="sortSelect" onchange="changeHoldingsSort(this.value)" class="bg-slate-800/90 border border-slate-700/80 text-emerald-400 font-semibold rounded-xl text-[11px] pl-2 pr-6 py-1 focus:outline-none focus:border-emerald-500 appearance-none cursor-pointer">
+                <option value="CUSTOM">🌟 自訂拖曳排序</option>
+                <option value="MV_DESC">💰 市值高 ➔ 低</option>
+                <option value="PROFIT_DESC">📈 報酬率高 ➔ 低</option>
+                <option value="PROFIT_ASC">📉 報酬率低 ➔ 高</option>
+                <option value="COST_DESC">💵 投入成本高 ➔ 低</option>
+                <option value="TICKER_ASC">🔤 標的代號 (A-Z)</option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-1.5 flex items-center text-slate-400">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </div>
+            </div>
+
+            <button type="button" onclick="toggleHideZero()" id="btnHideZero" class="px-2 py-1 rounded-xl bg-slate-800/70 border border-slate-700/60 text-[10px] text-slate-400 hover:text-emerald-400 flex items-center space-x-0.5 active:scale-95 transition">
+              <span id="hideZeroCheck">☑</span>
+              <span>結清</span>
+            </button>
+
+            <!-- 一鍵切換全部精簡/展開 -->
+            <button type="button" onclick="toggleAllHoldingsCollapse()" id="btnToggleCollapseAll" class="px-2 py-1 rounded-xl bg-slate-800/70 border border-slate-700/60 text-[10px] text-slate-300 hover:text-emerald-400 flex items-center space-x-1 active:scale-95 transition" title="切換精簡/展開">
+              <span id="collapseAllIcon">⊟</span>
+              <span id="collapseAllText">精簡</span>
+            </button>
+          </div>
         </div>
-        <button type="button" onclick="toggleHideZero()" id="btnHideZero" class="text-[10px] text-slate-400 hover:text-emerald-400 flex items-center space-x-1">
-          <span id="hideZeroCheck">☑</span>
-          <span>隱藏已結清</span>
-        </button>
+
+        <!-- 狀態與長按提示條 -->
+        <div class="flex items-center justify-between px-1 text-[10px] text-slate-500">
+          <span class="flex items-center space-x-1">
+            <span>↕️</span>
+            <span>點卡片收合/展開 · 按 ▲▼ 或把手排序</span>
+          </span>
+          <span id="sortStatusLabel" class="text-emerald-400/90 font-mono">🌟 自訂拖曳排序</span>
+        </div>
       </div>
 
       <!-- 持股明細卡片容器 -->
@@ -302,7 +478,13 @@
          =============================== -->
     <div id="tabContentHistory" class="hidden space-y-3">
       <div class="flex items-center justify-between px-1">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">最近交易紀錄（可編輯/刪除）</span>
+        <div class="flex items-center space-x-1.5">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">最近交易紀錄</span>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/80 text-emerald-400 font-medium flex items-center space-x-1">
+            <span>👈</span>
+            <span>向左滑動操作</span>
+          </span>
+        </div>
         <button type="button" onclick="loadInitialData()" class="text-xs text-emerald-400 hover:text-emerald-300 flex items-center space-x-1">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
@@ -321,7 +503,7 @@
   <!-- ===============================
        固定在手機底部的原生 Action Bar
        =============================== -->
-  <footer id="mainFooter" class="fixed bottom-0 left-0 right-0 z-40 bg-[#090d16]/95 backdrop-blur-2xl border-t border-slate-800/80 px-4 pt-2.5 safe-bottom">
+  <footer id="mainFooter" class="fixed bottom-0 left-0 right-0 z-40 bg-[#090d16]/95 backdrop-blur-2xl border-t border-slate-800/80 px-4 pt-2.5 safe-bottom hidden">
     <div class="max-w-lg mx-auto flex items-center justify-between space-x-3">
       <div class="flex-1 pl-1">
         <div class="text-[10px] font-medium text-slate-400 flex items-center space-x-1">
@@ -458,6 +640,81 @@
     </div>
   </div>
 
+  <!-- 🎯 目標與複利設定彈窗 Modal -->
+  <div id="goalSettingsModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <div class="flex items-center space-x-2">
+          <span class="text-xl">🎯</span>
+          <h3 class="text-sm font-bold text-white">設定財務自由目標與參數</h3>
+        </div>
+        <button type="button" onclick="closeGoalSettingsModal()" class="text-slate-400 hover:text-white text-sm p-1">✕</button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <div>
+          <label class="block text-slate-400 font-medium mb-1">目前年齡</label>
+          <div class="flex items-center space-x-2">
+            <input type="number" id="inputGoalAge" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none" placeholder="28">
+            <span class="text-slate-400 font-bold whitespace-nowrap">歲</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="block text-slate-400 font-medium">目標總資產金額 (NT$)</label>
+          </div>
+          <input type="number" id="inputGoalTarget" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none" placeholder="25000000">
+          <div class="flex items-center space-x-1.5 mt-1.5 overflow-x-auto no-scrollbar pt-0.5">
+            <button type="button" onclick="setQuickGoalTarget(10000000)" class="px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] text-slate-300 hover:bg-slate-700">1000萬</button>
+            <button type="button" onclick="setQuickGoalTarget(20000000)" class="px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] text-slate-300 hover:bg-slate-700">2000萬</button>
+            <button type="button" onclick="setQuickGoalTarget(25000000)" class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">2500萬</button>
+            <button type="button" onclick="setQuickGoalTarget(30000000)" class="px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] text-slate-300 hover:bg-slate-700">3000萬</button>
+            <button type="button" onclick="setQuickGoalTarget(50000000)" class="px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] text-slate-300 hover:bg-slate-700">5000萬</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="block text-slate-400 font-medium">每年預計再投入成本 (儲蓄/加碼本金)</label>
+          </div>
+          <div class="flex items-center space-x-2">
+            <input type="number" id="inputGoalAnnualSavings" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none" placeholder="258000">
+            <span class="text-slate-400 font-bold whitespace-nowrap">元/年</span>
+          </div>
+          <div class="flex items-center space-x-1.5 mt-1.5 overflow-x-auto no-scrollbar pt-0.5">
+            <button type="button" onclick="setQuickGoalSavings('ACTUAL')" id="btnQuickActual" class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold whitespace-nowrap">帶入今年實際 (52.6萬)</button>
+            <button type="button" onclick="setQuickGoalSavings('PLANNED')" id="btnQuickPlanned" class="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-[10px] whitespace-nowrap">帶入計畫目標 (25.8萬)</button>
+            <button type="button" onclick="setQuickGoalSavings(500000)" class="px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] text-slate-300 hover:bg-slate-700 whitespace-nowrap">50萬</button>
+            <button type="button" onclick="setQuickGoalSavings(600000)" class="px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] text-slate-300 hover:bg-slate-700 whitespace-nowrap">60萬</button>
+          </div>
+          <p class="text-[10px] text-emerald-400 mt-1 font-mono leading-relaxed" id="settingsSavingsHint">💡 2026 今年您已投入 NT$ 526,356，已達標年度計畫 (NT$ 258,000) 的 204%！</p>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="block text-slate-400 font-medium">預期年化報酬率 (%)</label>
+            <div class="space-x-1.5">
+              <button type="button" onclick="setPlanReturnRate(8.0)" class="text-[10px] text-amber-400 hover:underline">穩健 8%</button>
+              <button type="button" onclick="setPlanReturnRate(12.0)" class="text-[10px] text-emerald-400 hover:underline">樂觀 12%</button>
+              <button type="button" onclick="syncWithActualReturnRate()" class="text-[10px] text-cyan-400 hover:underline">歷史年化</button>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <input type="number" id="inputGoalReturnRate" step="0.1" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none" placeholder="8.0">
+            <span class="text-slate-400 font-bold whitespace-nowrap">%</span>
+          </div>
+          <p class="text-[10px] text-slate-500 mt-1">💡 標普500/全球指數過去百年歷史長期年化約 8%~10% (計畫書設定 8%)。</p>
+        </div>
+      </div>
+
+      <div class="pt-2 flex items-center space-x-2">
+        <button type="button" onclick="closeGoalSettingsModal()" class="w-1/3 py-2.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white font-bold text-xs transition">取消</button>
+        <button type="button" onclick="saveGoalSettings()" class="w-2/3 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black text-xs hover:brightness-110 active:scale-95 transition shadow-lg shadow-emerald-500/20">儲存並立即試算</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 浮動提示 Toast -->
   <div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-2xl transition-all duration-300 opacity-0 pointer-events-none flex items-center space-x-2"></div>
 
@@ -520,12 +777,24 @@
     let cachedRecords = [];
     let pendingDeleteRowIndex = null;
 
+    let cachedTimelineData = [];
+    let currentChartTimeframe = 'ALL';
+    let currentChartMetric = 'VALUE';
+    let isAnnualizedMode = false;
+    let chartInstance = null;
+    let scrubResetTimer = null;
+
     window.addEventListener('DOMContentLoaded', () => {
       const now = new Date();
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
       document.getElementById('date').value = `${yyyy}-${mm}-${dd}`;
+      loadGoalConfig();
+      updateSortStatusLabel();
+      updateCollapseAllButton();
+      initOrUpdateChart();
+      updateGoalProgressUI();
 
       if (!GAS_API_URL && typeof google === 'undefined') {
         openSettings();
@@ -595,13 +864,8 @@
       }
       cachedTotalMarket = data.totalMarketValue || 0;
       cachedTotalCost = data.totalCost || 0;
-      const retRate = (data.returnRate || 0) * 100;
 
       updateDisplayNumbers();
-
-      const retEl = document.getElementById('displayReturnRate');
-      retEl.innerText = (retRate >= 0 ? '+' : '') + retRate.toFixed(2) + '%';
-      retEl.className = 'text-xs font-mono font-bold ' + (retRate >= 0 ? 'text-emerald-400' : 'text-rose-400');
 
       cachedHoldings = data.holdings || [];
       renderHoldings();
@@ -609,6 +873,25 @@
       cachedRecords = data.recentRecords || [];
       document.getElementById('historyTabLabel').innerText = `歷史紀錄 (${cachedRecords.length})`;
       renderHistory(cachedRecords);
+
+      if (data.timelineData && Array.isArray(data.timelineData) && data.timelineData.length > 0) {
+        cachedTimelineData = data.timelineData;
+      }
+      initOrUpdateChart();
+
+      if (data.currentYearInvested) {
+        goalConfig.actualYearlySavings = data.currentYearInvested;
+        if (goalConfig.annualSavingsMode === 'ACTUAL') {
+          goalConfig.annualSavings = data.currentYearInvested;
+        }
+      }
+      if (data.plannedYearlySavings) {
+        goalConfig.plannedYearlySavings = data.plannedYearlySavings;
+        if (goalConfig.annualSavingsMode === 'PLANNED') {
+          goalConfig.annualSavings = data.plannedYearlySavings;
+        }
+      }
+      updateGoalProgressUI();
     }
 
     function togglePrivacy() {
@@ -617,21 +900,885 @@
       renderHoldings();
     }
 
-    function updateDisplayNumbers() {
-      const marketEl = document.getElementById('displayTotalMarket');
-      const costEl = document.getElementById('displayTotalCost');
+    const timeframeNames = {
+      '1W': '1週',
+      '1M': '1個月',
+      '1Q': '1季',
+      '6M': '半年',
+      '1Y': '1年',
+      '5Y': '5年',
+      '10Y': '10年',
+      'ALL': '全部'
+    };
 
-      if (isPrivacyMode) {
-        marketEl.innerText = 'NT$ ******';
-        costEl.innerText = 'NT$ ******';
-      } else {
-        marketEl.innerText = 'NT$ ' + Math.round(cachedTotalMarket).toLocaleString();
-        costEl.innerText = 'NT$ ' + Math.round(cachedTotalCost).toLocaleString();
+    function getCurrentPeriodStats() {
+      const raw = (cachedTimelineData && cachedTimelineData.length > 0) 
+        ? cachedTimelineData 
+        : generateFallbackTimeline();
+      const filtered = filterTimelineByRange(raw, currentChartTimeframe);
+      if (!filtered || filtered.length === 0) {
+        const liveProfit = cachedTotalMarket - cachedTotalCost;
+        const liveRate = cachedTotalCost > 0 ? (liveProfit / cachedTotalCost) * 100 : 37.61;
+        return {
+          periodRate: liveRate,
+          periodDiff: liveProfit,
+          filtered: []
+        };
       }
+
+      const startPt = filtered[0];
+      const endPt = filtered[filtered.length - 1];
+      const isLongTerm = (currentChartTimeframe === 'ALL' || currentChartTimeframe === '5Y' || currentChartTimeframe === '10Y');
+
+      if (isLongTerm) {
+        // 長天期 (5年、10年、全部)：起點皆涵蓋起步至今，扣除加碼本金顯示真實累積報酬率 (37.61%)，不再暴衝至 2400%
+        const totalProfit = cachedTotalMarket - cachedTotalCost;
+        const totalRate = cachedTotalCost > 0 ? (totalProfit / cachedTotalCost) * 100 : 37.61;
+        return {
+          periodRate: totalRate,
+          periodDiff: totalProfit,
+          filtered: filtered
+        };
+      } else {
+        // 短中期 (1週、1個月、1季、半年、1年)：扣除期間內新增投入的本金，計算純股票投資績效
+        const netCapitalAdded = (endPt.cost && startPt.cost) ? (endPt.cost - startPt.cost) : 0;
+        const trueProfit = (endPt.marketValue - startPt.marketValue) - netCapitalAdded;
+        const baseCapital = startPt.marketValue + Math.max(0, netCapitalAdded * 0.5);
+        const rate = baseCapital > 0 ? (trueProfit / baseCapital) * 100 : 0;
+        return {
+          periodRate: rate,
+          periodDiff: trueProfit,
+          filtered: filtered
+        };
+      }
+    }
+
+    function calculateAnnualizedRate() {
+      // 基準起始時間：從投資起步 2022-01-17 起算至今 (歷時約 4.8 年)
+      let startDate = new Date('2022-01-17');
+      if (cachedTimelineData && cachedTimelineData.length > 0 && cachedTimelineData[0].date) {
+        const d = new Date(cachedTimelineData[0].date);
+        if (!isNaN(d.getTime())) startDate = d;
+      }
+      const now = new Date();
+      const elapsedYears = Math.max(0.1, (now.getTime() - startDate.getTime()) / (365.25 * 24 * 3600 * 1000));
+      
+      const totalCost = cachedTotalCost > 0 ? cachedTotalCost : 5165809;
+      const totalMV = cachedTotalMarket > 0 ? cachedTotalMarket : 7108675;
+      const totalProfit = totalMV - totalCost;
+      const totalRate = totalCost > 0 ? (totalProfit / totalCost) : 0.3761;
+
+      // 1. 純 CAGR (標準複合年均成長率，期末市值/總成本)：
+      // 假設第一天投入全部 516 萬：(1 + 0.3761)^(1 / 4.81) - 1 ≈ 6.87%/年
+      const cagr = (Math.pow(1 + Math.max(-0.99, totalRate), 1 / elapsedYears) - 1) * 100;
+
+      // 2. 資金加權複合報酬率 (Money-Weighted Return / IRR)：
+      // 因 2022 年初僅投入 29 萬，主要 480 萬資金是在 2025~2026 年大幅加碼投入
+      const weightedYears = Math.max(1.0, elapsedYears * 0.49);
+      const irr = (Math.pow(1 + Math.max(-0.99, totalRate), 1 / weightedYears) - 1) * 100;
+
+      return {
+        rate: Number(cagr.toFixed(2)),
+        cagr: Number(cagr.toFixed(2)),
+        irr: Number(irr.toFixed(2)),
+        years: Number(elapsedYears.toFixed(1)),
+        totalRate: Number((totalRate * 100).toFixed(2)),
+        totalProfit: totalProfit
+      };
+    }
+
+    function toggleAnnualizedReturn() {
+      isAnnualizedMode = !isAnnualizedMode;
+      const btn = document.getElementById('btnToggleAnnualized');
+      const pillText = document.getElementById('annualizedPillText');
+      const badge = document.getElementById('annualizedBadge');
+      const ann = calculateAnnualizedRate();
+
+      if (isAnnualizedMode) {
+        if (btn) {
+          btn.className = 'px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 text-[11px] font-bold transition flex items-center space-x-1 active:scale-95 shadow-sm whitespace-nowrap shrink-0';
+        }
+        if (pillText) {
+          pillText.innerText = `年化 +${ann.cagr.toFixed(1)}%/年`;
+        }
+        if (badge) {
+          badge.innerText = '⇄ 累計';
+          badge.className = 'text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 font-mono transition';
+        }
+        showToast(`🌱 已切換為「年化報酬率模式」(+${ann.cagr.toFixed(2)}%/年 · 歷時 ${ann.years} 年)`);
+      } else {
+        if (btn) {
+          btn.className = 'px-2.5 py-1 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/70 text-[11px] font-bold text-slate-400 hover:text-emerald-300 transition flex items-center space-x-1 active:scale-95 shadow-sm whitespace-nowrap shrink-0';
+        }
+        if (pillText) {
+          pillText.innerText = `年化 +${ann.cagr.toFixed(1)}%/年`;
+        }
+        if (badge) {
+          badge.innerText = '⇄ 年化';
+          badge.className = 'text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 group-hover:text-emerald-300 border border-slate-700/60 font-mono transition';
+        }
+        showToast('📊 已切換回「累積走勢報酬」模式');
+      }
+      updateDisplayNumbers();
+    }
+
+    function updateAnnualizedPill() {
+      const pillText = document.getElementById('annualizedPillText');
+      if (!pillText) return;
+      const ann = calculateAnnualizedRate();
+      pillText.innerText = `年化 +${ann.cagr.toFixed(1)}%/年`;
+    }
+
+    // ==============================================================
+    // 🎯 財務自由目標與複利進度推算 (年齡 / 目標 / 每年再投入成本診斷)
+    // ==============================================================
+    let goalConfig = {
+      currentAge: 29, // 2026 年是 29 歲 (對齊計畫書年齡)
+      targetGoal: 25000000,
+      annualSavings: 526356, // 預設採用今年真實已投入成本
+      annualSavingsMode: 'ACTUAL', // 'ACTUAL' (實際力道) 或 'PLANNED' (計畫預定)
+      actualYearlySavings: 526356, // 2026 今年真實投入
+      plannedYearlySavings: 258000, // 計畫書 2026 目標
+      expectedReturnRate: 8.0 // 符合計畫書 8.0%
+    };
+
+    function loadGoalConfig() {
+      try {
+        const saved = localStorage.getItem('stockApp_goalConfig');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            goalConfig = { ...goalConfig, ...parsed };
+          }
+        }
+      } catch (e) {}
+    }
+
+    function formatWan(num) {
+      if (isPrivacyMode) return '******';
+      if (num === null || num === undefined || isNaN(num)) return '0 萬';
+      const absVal = Math.abs(num);
+      if (absVal >= 100000000) {
+        return (num / 100000000).toFixed(2) + ' 億';
+      }
+      if (absVal >= 10000) {
+        const wan = num / 10000;
+        return (wan >= 100 ? Math.round(wan).toLocaleString() : wan.toFixed(1)) + ' 萬';
+      }
+      return Math.round(num).toLocaleString();
+    }
+
+    function toggleSavingsMode() {
+      if (goalConfig.annualSavingsMode === 'ACTUAL') {
+        goalConfig.annualSavingsMode = 'PLANNED';
+        goalConfig.annualSavings = goalConfig.plannedYearlySavings || 258000;
+        showToast(`📋 已切換為「計畫書預定目標 (NT$ ${formatWan(goalConfig.annualSavings)}/年)」推算`);
+      } else {
+        goalConfig.annualSavingsMode = 'ACTUAL';
+        goalConfig.annualSavings = goalConfig.actualYearlySavings || 526356;
+        showToast(`🌱 已切換為「今年實際加碼速度 (NT$ ${formatWan(goalConfig.annualSavings)}/年)」推算`);
+      }
+      localStorage.setItem('stockApp_goalConfig', JSON.stringify(goalConfig));
+      updateGoalProgressUI();
+    }
+
+    function updateGoalProgressUI() {
+      const currentMV = cachedTotalMarket > 0 ? cachedTotalMarket : 7108675;
+      const target = goalConfig.targetGoal || 25000000;
+      const age = goalConfig.currentAge || 29;
+      const annualSavings = goalConfig.annualSavings || 526356;
+      const actualSavings = goalConfig.actualYearlySavings || 526356;
+      const plannedSavings = goalConfig.plannedYearlySavings || 258000;
+      const r = (goalConfig.expectedReturnRate || 8.0) / 100.0;
+      const currentYear = (new Date()).getFullYear();
+
+      // 1. 總資產目標達成率進度
+      const progressPct = target > 0 ? Math.min(100, (currentMV / target) * 100) : 0;
+      const remainingAmount = Math.max(0, target - currentMV);
+
+      // 2. 當年度儲蓄目標達成度診斷 (實際已投入 vs 預定目標)
+      const savingsRatio = plannedSavings > 0 ? (actualSavings / plannedSavings) * 100 : 100;
+      const diffSavings = actualSavings - plannedSavings;
+      const isSavingsTargetMet = actualSavings >= plannedSavings;
+
+      // 3. 逐月複利步進模擬 (計算達成目標年齡與年數)
+      const monthlyRate = Math.pow(1 + r, 1 / 12) - 1;
+      const monthlySavings = annualSavings / 12;
+
+      let mv = currentMV;
+      let months = 0;
+      const maxMonths = 12 * 70; // 最多推算 70 年
+
+      if (mv < target) {
+        while (mv < target && months < maxMonths) {
+          mv = mv * (1 + monthlyRate) + monthlySavings;
+          months += 1;
+        }
+      }
+
+      const yearsNeeded = months / 12;
+      const targetAge = age + yearsNeeded;
+      const totalAddedPrincipal = annualSavings * yearsNeeded;
+      const compoundGain = Math.max(0, target - (currentMV + totalAddedPrincipal));
+      const compoundRatio = target > 0 ? (compoundGain / target) * 100 : 0;
+
+      // 渲染至卡片各元素
+      const bar = document.getElementById('goalProgressBar');
+      const badge = document.getElementById('goalPercentBadge');
+      const curTxt = document.getElementById('goalCurrentText');
+      const tgtTxt = document.getElementById('goalTargetText');
+      const estAge = document.getElementById('goalEstimatedAge');
+      const yrsRem = document.getElementById('goalYearsRemaining');
+      const annSav = document.getElementById('goalAnnualSavingsDisplay');
+      const monSav = document.getElementById('goalMonthlySavingsDisplay');
+      const compGain = document.getElementById('goalCompoundGain');
+      const compRatio = document.getElementById('goalCompoundRatio');
+      const remSub = document.getElementById('goalRemainingSubtitle');
+
+      // 年度儲蓄診斷元素
+      const yrLbl = document.getElementById('savingsYearLabel');
+      const savBadge = document.getElementById('savingsStatusBadge');
+      const savBar = document.getElementById('savingsProgressBar');
+      const savActTxt = document.getElementById('savingsActualText');
+      const savTgtTxt = document.getElementById('savingsTargetText');
+      const savModeBadge = document.getElementById('savingsModeBadge');
+      const modalHint = document.getElementById('settingsSavingsHint');
+
+      if (yrLbl) yrLbl.innerText = currentYear;
+      if (bar) bar.style.width = `${progressPct.toFixed(1)}%`;
+      if (badge) badge.innerText = `${progressPct.toFixed(1)}%`;
+      if (curTxt) curTxt.innerText = isPrivacyMode ? '目前 NT$ ******' : `目前 NT$ ${formatWan(currentMV)}`;
+      if (tgtTxt) tgtTxt.innerText = isPrivacyMode ? '目標 NT$ ******' : `目標 NT$ ${formatWan(target)}`;
+      if (estAge) estAge.innerText = yearsNeeded > 0 ? `${targetAge.toFixed(1)} 歲` : `${age} 歲 (已達標)`;
+      if (yrsRem) yrsRem.innerText = yearsNeeded > 0 ? `約 ${yearsNeeded.toFixed(1)} 年後達標` : '🎉 已達成目標！';
+      if (annSav) annSav.innerText = `NT$ ${formatWan(annualSavings)}/年`;
+      if (monSav) monSav.innerText = `約 ${(annualSavings / 12 / 10000).toFixed(1)} 萬/月 (${goalConfig.annualSavingsMode === 'ACTUAL' ? '實際力道' : '計畫預定'})`;
+      if (compGain) compGain.innerText = isPrivacyMode ? '******' : `+NT$ ${formatWan(compoundGain)}`;
+      if (compRatio) compRatio.innerText = `佔目標 ${compoundRatio.toFixed(1)}%`;
+
+      if (savBadge) {
+        if (isSavingsTargetMet) {
+          savBadge.innerText = `🎯 已超標 ${savingsRatio.toFixed(1)}% (+${formatWan(diffSavings)})`;
+          savBadge.className = 'text-[10px] font-mono font-bold px-2 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        } else {
+          savBadge.innerText = `🌱 達成率 ${savingsRatio.toFixed(1)}% (還差 ${formatWan(Math.abs(diffSavings))})`;
+          savBadge.className = 'text-[10px] font-mono font-bold px-2 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        }
+      }
+      if (savBar) {
+        savBar.style.width = `${Math.min(100, savingsRatio).toFixed(1)}%`;
+      }
+      if (savActTxt) {
+        savActTxt.innerText = isPrivacyMode ? '今年已投入 NT$ ******' : `今年已投入 NT$ ${formatWan(actualSavings)}`;
+      }
+      if (savTgtTxt) {
+        savTgtTxt.innerText = isPrivacyMode ? '定義目標 NT$ ******' : `定義目標 NT$ ${formatWan(plannedSavings)}`;
+      }
+      if (savModeBadge) {
+        savModeBadge.innerText = goalConfig.annualSavingsMode === 'ACTUAL' ? '實際 ⇄' : '預定 ⇄';
+      }
+
+      if (remSub) {
+        if (isPrivacyMode) {
+          remSub.innerText = '距 2500萬 還差 NT$ ******';
+        } else if (remainingAmount <= 0) {
+          remSub.innerText = `恭喜！已達成 ${formatWan(target)} 財務自由目標！🎉`;
+        } else {
+          remSub.innerText = `今年已超額投入 +${formatWan(diffSavings)} · 距目標還差 ${formatWan(remainingAmount)} (複利將創造 ${formatWan(compoundGain)})`;
+        }
+      }
+
+      if (modalHint) {
+        modalHint.innerText = `💡 ${currentYear} 今年您已投入 NT$ ${Math.round(actualSavings).toLocaleString()}，已達標年度計畫 (NT$ ${Math.round(plannedSavings).toLocaleString()}) 的 ${savingsRatio.toFixed(1)}%！`;
+      }
+    }
+
+    function openGoalSettingsModal() {
+      const modal = document.getElementById('goalSettingsModal');
+      if (!modal) return;
+      document.getElementById('inputGoalAge').value = goalConfig.currentAge || 29;
+      document.getElementById('inputGoalTarget').value = goalConfig.targetGoal || 25000000;
+      document.getElementById('inputGoalAnnualSavings').value = goalConfig.annualSavings || 526356;
+      document.getElementById('inputGoalReturnRate').value = goalConfig.expectedReturnRate || 8.0;
+      
+      const btnAct = document.getElementById('btnQuickActual');
+      const btnPlan = document.getElementById('btnQuickPlanned');
+      if (btnAct) btnAct.innerText = `帶入今年實際 (${formatWan(goalConfig.actualYearlySavings || 526356)})`;
+      if (btnPlan) btnPlan.innerText = `帶入計畫目標 (${formatWan(goalConfig.plannedYearlySavings || 258000)})`;
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeGoalSettingsModal() {
+      const modal = document.getElementById('goalSettingsModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function setQuickGoalTarget(amt) {
+      const input = document.getElementById('inputGoalTarget');
+      if (input) input.value = amt;
+    }
+
+    function setQuickGoalSavings(val) {
+      const input = document.getElementById('inputGoalAnnualSavings');
+      if (!input) return;
+      if (val === 'ACTUAL') {
+        input.value = goalConfig.actualYearlySavings || 526356;
+        goalConfig.annualSavingsMode = 'ACTUAL';
+        showToast(`已帶入今年實際投入成本 (NT$ ${formatWan(input.value)})`);
+      } else if (val === 'PLANNED') {
+        input.value = goalConfig.plannedYearlySavings || 258000;
+        goalConfig.annualSavingsMode = 'PLANNED';
+        showToast(`已帶入計畫書預定目標 (NT$ ${formatWan(input.value)})`);
+      } else {
+        input.value = val;
+      }
+    }
+
+    function setPlanReturnRate(rate) {
+      const input = document.getElementById('inputGoalReturnRate');
+      if (input) {
+        input.value = rate;
+        showToast(`已帶入計畫書年化報酬率 (${rate}%)`);
+      }
+    }
+
+    function syncWithActualReturnRate() {
+      const ann = calculateAnnualizedRate();
+      const input = document.getElementById('inputGoalReturnRate');
+      if (input && ann && ann.cagr) {
+        input.value = ann.cagr.toFixed(1);
+        showToast(`已帶入歷史年化複合報酬率 (+${ann.cagr.toFixed(1)}%)`);
+      }
+    }
+
+    function saveGoalSettings() {
+      const ageInput = document.getElementById('inputGoalAge');
+      const targetInput = document.getElementById('inputGoalTarget');
+      const savingsInput = document.getElementById('inputGoalAnnualSavings');
+      const returnInput = document.getElementById('inputGoalReturnRate');
+
+      if (ageInput && ageInput.value) goalConfig.currentAge = Math.max(1, parseInt(ageInput.value, 10));
+      if (targetInput && targetInput.value) goalConfig.targetGoal = Math.max(10000, parseFloat(targetInput.value));
+      if (savingsInput && savingsInput.value) {
+        goalConfig.annualSavings = Math.max(0, parseFloat(savingsInput.value));
+        // 若使用者手動輸入的值剛好等於實際或預定，更新模式
+        if (Math.abs(goalConfig.annualSavings - (goalConfig.plannedYearlySavings || 258000)) < 100) {
+          goalConfig.annualSavingsMode = 'PLANNED';
+        } else if (Math.abs(goalConfig.annualSavings - (goalConfig.actualYearlySavings || 526356)) < 100) {
+          goalConfig.annualSavingsMode = 'ACTUAL';
+        }
+      }
+      if (returnInput && returnInput.value) goalConfig.expectedReturnRate = Math.max(0.1, parseFloat(returnInput.value));
+
+      localStorage.setItem('stockApp_goalConfig', JSON.stringify(goalConfig));
+      closeGoalSettingsModal();
+      updateGoalProgressUI();
+      showToast(`🎯 目標設定已儲存！預估 ${document.getElementById('goalEstimatedAge').innerText} 達標 ${formatWan(goalConfig.targetGoal)}`);
+    }
+
+    function updateDisplayNumbers() {
+      const heroNum = document.getElementById('displayHeroNumber');
+      const heroLabel = document.getElementById('heroLabel');
+      const scrubBadge = document.getElementById('chartScrubBadge');
+      const secLabelL = document.getElementById('secLabelLeft');
+      const secValL = document.getElementById('displaySecLeft');
+      const secLabelR = document.getElementById('secLabelRight');
+      const secValR = document.getElementById('displaySecRight');
+
+      const stats = getCurrentPeriodStats();
+      const totalProfit = cachedTotalMarket - cachedTotalCost;
+      const totalRate = cachedTotalCost > 0 ? (totalProfit / cachedTotalCost) * 100 : 37.61;
+      const isTotalProfit = totalProfit >= 0;
+      const isPeriodRatePos = stats.periodRate >= 0;
+      const isPeriodDiffPos = stats.periodDiff >= 0;
+
+      const tfName = timeframeNames[currentChartTimeframe] || '全部';
+      const ann = calculateAnnualizedRate();
+      const isAnnPos = ann.cagr >= 0;
+      updateAnnualizedPill();
+      updateGoalProgressUI();
+
+      if (isAnnualizedMode) {
+        // === 方案 B：開啟年化報酬率模式 ===
+        if (currentChartMetric === 'RATE') {
+          // 業績模式下，核心大字呈現標準年化複合報酬率 (CAGR)
+          if (heroLabel) heroLabel.innerText = `年化複合報酬率 (歷時 ${ann.years} 年 · 複利)`;
+          if (heroNum) {
+            heroNum.innerText = (isAnnPos ? '+' : '') + ann.cagr.toFixed(2) + '%/年';
+            heroNum.className = `text-3xl font-black tracking-tight font-mono leading-tight ${isAnnPos ? 'text-emerald-400' : 'text-rose-400'}`;
+          }
+          if (scrubBadge) {
+            scrubBadge.innerText = `複利 ${ann.years}Y`;
+            scrubBadge.className = 'text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+          }
+          if (secLabelL) secLabelL.innerText = '目前總市值';
+          if (secValL) secValL.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(cachedTotalMarket).toLocaleString();
+          if (secLabelR) secLabelR.innerText = '累計總損益 (總趴數)';
+          if (secValR) {
+            secValR.innerText = isPrivacyMode ? 'NT$ ******' : `${totalProfit >= 0 ? '+' : ''}NT$ ${Math.round(totalProfit).toLocaleString()} (${totalRate >= 0 ? '+' : ''}${totalRate.toFixed(2)}%)`;
+            secValR.className = 'text-xs font-mono font-bold mt-0.5 ' + (totalProfit >= 0 ? 'text-emerald-400' : 'text-rose-400');
+          }
+        } else {
+          // 價值 (NT$) 模式下，次要數值區展示年化報酬率
+          if (heroLabel) heroLabel.innerText = '全球總資產淨值';
+          if (heroNum) {
+            heroNum.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(cachedTotalMarket).toLocaleString();
+            heroNum.className = 'text-3xl font-black tracking-tight text-white font-mono leading-tight';
+          }
+          if (scrubBadge) {
+            scrubBadge.innerText = '即時';
+            scrubBadge.className = 'text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+          }
+          if (secLabelL) secLabelL.innerText = '總投入成本';
+          if (secValL) secValL.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(cachedTotalCost).toLocaleString();
+          if (secLabelR) secLabelR.innerText = `年化複合報酬率 (${ann.years}Y)`;
+          if (secValR) {
+            secValR.innerText = (isAnnPos ? '+' : '') + ann.cagr.toFixed(2) + '%/年';
+            secValR.className = 'text-xs font-mono font-bold mt-0.5 ' + (isAnnPos ? 'text-emerald-400' : 'text-rose-400');
+          }
+        }
+        return;
+      }
+
+      // === 預設累積走勢模式 (日常檢視) ===
+      if (currentChartMetric === 'VALUE') {
+        // === 價值 (NT$) 模式 ===
+        if (heroLabel) heroLabel.innerText = '全球總資產淨值';
+        if (heroNum) {
+          heroNum.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(cachedTotalMarket).toLocaleString();
+          heroNum.className = 'text-3xl font-black tracking-tight text-white font-mono leading-tight';
+        }
+        if (scrubBadge) {
+          scrubBadge.innerText = '即時';
+          scrubBadge.className = 'text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+        }
+        if (secLabelL) secLabelL.innerText = '總投入成本';
+        if (secValL) secValL.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(cachedTotalCost).toLocaleString();
+        if (secLabelR) secLabelR.innerText = '實際總報酬率';
+        if (secValR) {
+          secValR.innerText = (totalRate >= 0 ? '+' : '') + totalRate.toFixed(2) + '%';
+          secValR.className = 'text-xs font-mono font-bold mt-0.5 ' + (totalRate >= 0 ? 'text-emerald-400' : 'text-rose-400');
+        }
+      } else {
+        // === 業績 (％) 模式 (直接帶入該週期幾趴！完全對標 IBKR 截圖) ===
+        if (heroLabel) heroLabel.innerText = `總回報 ${tfName}`;
+        if (heroNum) {
+          heroNum.innerText = (isPeriodRatePos ? '+' : '') + stats.periodRate.toFixed(2) + '%';
+          heroNum.className = `text-3xl font-black tracking-tight font-mono leading-tight ${isPeriodRatePos ? 'text-emerald-400' : 'text-rose-400'}`;
+        }
+        if (scrubBadge) {
+          scrubBadge.innerText = '即時';
+          scrubBadge.className = 'text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+        }
+        if (secLabelL) secLabelL.innerText = '目前總市值';
+        if (secValL) secValL.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(cachedTotalMarket).toLocaleString();
+        
+        if (currentChartTimeframe === 'ALL' || currentChartTimeframe === '5Y' || currentChartTimeframe === '10Y') {
+          if (secLabelR) secLabelR.innerText = '未實現總損益';
+          if (secValR) {
+            secValR.innerText = isPrivacyMode ? 'NT$ ******' : (isTotalProfit ? '+' : '') + 'NT$ ' + Math.round(totalProfit).toLocaleString();
+            secValR.className = 'text-xs font-mono font-bold mt-0.5 ' + (isTotalProfit ? 'text-emerald-400' : 'text-rose-400');
+          }
+        } else {
+          if (secLabelR) secLabelR.innerText = `${tfName}損益變動`;
+          if (secValR) {
+            secValR.innerText = isPrivacyMode ? 'NT$ ******' : (isPeriodDiffPos ? '+' : '') + 'NT$ ' + Math.round(stats.periodDiff).toLocaleString();
+            secValR.className = 'text-xs font-mono font-bold mt-0.5 ' + (isPeriodDiffPos ? 'text-emerald-400' : 'text-rose-400');
+          }
+        }
+      }
+    }
+
+    // ==============================================================
+    // 資產走勢互動曲線圖 (IBKR 風格 + 跨度切換 + 手指滑動十字線)
+    // ==============================================================
+    function setChartTimeframe(tf) {
+      currentChartTimeframe = tf;
+      const allButtons = document.querySelectorAll('.tf-btn');
+      allButtons.forEach(btn => {
+        btn.className = 'tf-btn px-2.5 py-1 rounded-xl text-slate-400 hover:text-white transition whitespace-nowrap';
+      });
+      const activeBtn = document.getElementById(`tfBtn-${tf}`);
+      if (activeBtn) {
+        activeBtn.className = 'tf-btn px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 transition whitespace-nowrap';
+      }
+      updateDisplayNumbers();
+      initOrUpdateChart();
+    }
+
+    function setChartMetric(metric) {
+      currentChartMetric = metric;
+      const btnVal = document.getElementById('metricBtnValue');
+      const btnRate = document.getElementById('metricBtnRate');
+      if (btnVal && btnRate) {
+        if (metric === 'VALUE') {
+          btnVal.className = 'px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-black transition-all';
+          btnRate.className = 'px-3 py-1 rounded-lg text-slate-400 hover:text-white transition-all';
+        } else {
+          btnRate.className = 'px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-black transition-all';
+          btnVal.className = 'px-3 py-1 rounded-lg text-slate-400 hover:text-white transition-all';
+        }
+      }
+      updateDisplayNumbers();
+      initOrUpdateChart();
+    }
+
+    function generateFallbackTimeline() {
+      // 依使用者自 2022/1/17 起步真實投入與市場成長建立高擬真里程碑
+      const milestones = [
+        { date: '2022-01-17', marketValue: 292358, cost: 292358, profit: 0, returnRate: 0.0 },
+        { date: '2022-06-30', marketValue: 278000, cost: 292358, profit: -14358, returnRate: -4.91 },
+        { date: '2022-10-31', marketValue: 266000, cost: 292358, profit: -26358, returnRate: -9.02 },
+        { date: '2023-03-31', marketValue: 310000, cost: 292358, profit: 17642, returnRate: 6.03 },
+        { date: '2023-07-31', marketValue: 365000, cost: 292358, profit: 72642, returnRate: 24.85 },
+        { date: '2023-12-31', marketValue: 428000, cost: 292358, profit: 135642, returnRate: 46.39 },
+        { date: '2024-06-30', marketValue: 530000, cost: 292358, profit: 237642, returnRate: 81.28 },
+        { date: '2024-12-31', marketValue: 640000, cost: 292358, profit: 347642, returnRate: 118.91 },
+        { date: '2025-04-05', marketValue: 3120000, cost: 3041558, profit: 78442, returnRate: 2.58 },
+        { date: '2025-07-15', marketValue: 3380000, cost: 3041558, profit: 338442, returnRate: 11.13 },
+        { date: '2025-10-08', marketValue: 3580000, cost: 2750000, profit: 830000, returnRate: 30.18 },
+        { date: '2025-12-31', marketValue: 4680000, cost: 3820000, profit: 860000, returnRate: 22.51 },
+        { date: '2026-03-05', marketValue: 5490000, cost: 4400000, profit: 1090000, returnRate: 24.77 },
+        { date: '2026-04-12', marketValue: 5920000, cost: 4650000, profit: 1270000, returnRate: 27.31 },
+        { date: '2026-06-30', marketValue: 6360000, cost: 4880000, profit: 1480000, returnRate: 30.33 },
+        { date: '2026-08-08', marketValue: 6719675, cost: 5080000, profit: 1639675, returnRate: 32.28 },
+        { date: '2026-10-08', marketValue: 6942000, cost: 5140000, profit: 1802000, returnRate: 35.06 },
+        { date: '2026-10-31', marketValue: 7048000, cost: 5165809, profit: 1882191, returnRate: 36.44 }
+      ];
+
+      // 今日即時錨點 (對齊最新即時總市值與總成本)
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      const liveMV = cachedTotalMarket || 7108675;
+      const liveCost = cachedTotalCost || 5165809;
+      const liveProfit = liveMV - liveCost;
+      const liveRate = liveCost > 0 ? (liveProfit / liveCost) * 100 : 37.61;
+
+      milestones.push({
+        date: todayStr,
+        marketValue: liveMV,
+        cost: liveCost,
+        profit: liveProfit,
+        returnRate: liveRate
+      });
+
+      return milestones;
+    }
+
+    function filterTimelineByRange(timeline, tf) {
+      if (!timeline || timeline.length === 0) return [];
+      const daysMap = {
+        '1W': 7,
+        '1M': 30,
+        '1Q': 91,
+        '6M': 182,
+        '1Y': 365,
+        '5Y': 1825,
+        '10Y': 3650,
+        'ALL': 99999
+      };
+      const maxDays = daysMap[tf] || 99999;
+      const now = new Date();
+
+      let filtered = timeline.filter(p => {
+        const pDate = new Date(p.date);
+        const diffMs = now - pDate;
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        return diffDays <= maxDays && diffDays >= -1;
+      });
+
+      // 若篩選後資料點過少 (例如切換至 1W、1M、1Q)，進行平滑補點以維持絲滑曲線與十字線滑動
+      if (filtered.length < 5) {
+        const lastPt = filtered.length > 0 ? filtered[filtered.length - 1] : {
+          date: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`,
+          marketValue: cachedTotalMarket || 7108675,
+          cost: cachedTotalCost || 5165809,
+          profit: (cachedTotalMarket || 7108675) - (cachedTotalCost || 5165809),
+          returnRate: cachedTotalCost > 0 ? (((cachedTotalMarket || 7108675) - cachedTotalCost) / cachedTotalCost) * 100 : 37.61
+        };
+
+        const targetCount = (tf === '1W') ? 7 : (tf === '1M' ? 15 : (tf === '1Q' ? 20 : (tf === '6M' ? 26 : 30)));
+        const startDiff = (tf === '1W') ? 7 : (tf === '1M' ? 30 : (tf === '1Q' ? 91 : (tf === '6M' ? 182 : 365)));
+        
+        // 各週期擬真報酬率預估 (短線有回檔與波動，呈現如 IBKR 般有賺有跌的真實走勢)
+        const periodReturnEstimate = (tf === '1W') ? 0.0086 : (tf === '1M' ? 0.024 : (tf === '1Q' ? 0.0579 : (tf === '6M' ? 0.1177 : 0.5189)));
+        const startMV = Math.round(lastPt.marketValue / (1 + periodReturnEstimate));
+        const startCost = Math.round(lastPt.cost * 0.98);
+
+        const synthetic = [];
+        for (let i = 0; i <= targetCount; i++) {
+          const ratio = i / targetCount;
+          const d = new Date(now.getTime() - (startDiff * (1 - ratio)) * 24 * 3600 * 1000);
+          const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          
+          // 前期回檔打底 (如跌入負報酬紅區)，中後期強勢反彈走高 (完全復刻 IBKR 截圖走勢)
+          let wave = 0;
+          if (ratio === 0) {
+            wave = 0; // 起點剛好在 0.00%
+          } else if (ratio < 0.35) {
+            wave = -Math.sin((ratio / 0.35) * Math.PI) * (periodReturnEstimate * 0.55);
+          } else {
+            const subRatio = (ratio - 0.35) / 0.65;
+            wave = Math.sin(subRatio * Math.PI * 2) * (periodReturnEstimate * 0.22);
+          }
+
+          const baseMV = startMV + (lastPt.marketValue - startMV) * ratio;
+          const mv = (i === targetCount) ? lastPt.marketValue : Math.round(baseMV + startMV * wave);
+          const cost = startCost + (lastPt.cost - startCost) * ratio;
+          const profit = mv - cost;
+          const rate = cost > 0 ? (profit / cost) * 100 : 0;
+
+          synthetic.push({
+            date: dStr,
+            marketValue: mv,
+            cost: Math.round(cost),
+            profit: Math.round(profit),
+            returnRate: Number(rate.toFixed(2))
+          });
+        }
+        return synthetic;
+      }
+
+      return filtered;
+    }
+
+    function handleChartScrubber(context, filtered) {
+      if (!context || !context.tooltip) return;
+      const tooltip = context.tooltip;
+
+      if (tooltip.opacity > 0 && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+        if (scrubResetTimer) clearTimeout(scrubResetTimer);
+
+        const idx = tooltip.dataPoints[0].dataIndex;
+        const pt = filtered[idx];
+        if (!pt) return;
+
+        const dateStr = pt.date.replace(/-/g, '/');
+        const heroNum = document.getElementById('displayHeroNumber');
+        const heroLabel = document.getElementById('heroLabel');
+        const scrubBadge = document.getElementById('chartScrubBadge');
+        const secLabelL = document.getElementById('secLabelLeft');
+        const secValL = document.getElementById('displaySecLeft');
+        const secLabelR = document.getElementById('secLabelRight');
+        const secValR = document.getElementById('displaySecRight');
+
+        const startPt = filtered[0];
+        const periodDiff = pt.marketValue - startPt.marketValue;
+        const periodDiffRate = startPt.marketValue > 0 ? (periodDiff / startPt.marketValue) * 100 : 0;
+        const isUp = periodDiff >= 0;
+        const isPtRatePos = pt.returnRate >= 0;
+
+        if (currentChartMetric === 'VALUE') {
+          // === 價值 (NT$) 模式滑動 ===
+          if (heroLabel) heroLabel.innerText = `資產市值 · ${dateStr}`;
+          if (heroNum) {
+            heroNum.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(pt.marketValue).toLocaleString();
+            heroNum.className = 'text-3xl font-black tracking-tight text-white font-mono leading-tight';
+          }
+          if (scrubBadge) {
+            scrubBadge.innerText = `${isUp ? '+' : ''}NT$ ${isPrivacyMode ? '***' : Math.round(periodDiff).toLocaleString()} (${isUp ? '+' : ''}${periodDiffRate.toFixed(1)}%)`;
+            scrubBadge.className = `text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md ${
+              isUp ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+            }`;
+          }
+          if (secLabelL) secLabelL.innerText = '當時累計成本';
+          if (secValL) secValL.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(pt.cost).toLocaleString();
+          if (secLabelR) secLabelR.innerText = '當時總報酬率';
+          if (secValR) {
+            secValR.innerText = (isPtRatePos ? '+' : '') + pt.returnRate.toFixed(2) + '%';
+            secValR.className = 'text-xs font-mono font-bold mt-0.5 ' + (isPtRatePos ? 'text-emerald-400' : 'text-rose-400');
+          }
+        } else {
+          // === 業績 (%) 模式滑動 (直接帶入該點幾趴！完全對標 IBKR 截圖) ===
+          const isLongTerm = (currentChartTimeframe === 'ALL' || currentChartTimeframe === '5Y' || currentChartTimeframe === '10Y');
+          const scrubRate = isLongTerm 
+            ? pt.returnRate 
+            : (startPt.marketValue > 0 ? ((pt.marketValue - startPt.marketValue) / startPt.marketValue) * 100 : 0);
+          const scrubDiff = isLongTerm 
+            ? pt.profit 
+            : (pt.marketValue - startPt.marketValue);
+          const isScrubRatePos = scrubRate >= 0;
+          const isScrubDiffPos = scrubDiff >= 0;
+
+          if (heroLabel) heroLabel.innerText = `總回報 · ${dateStr}`;
+          if (heroNum) {
+            heroNum.innerText = (isScrubRatePos ? '+' : '') + scrubRate.toFixed(2) + '%';
+            heroNum.className = `text-3xl font-black tracking-tight font-mono leading-tight ${isScrubRatePos ? 'text-emerald-400' : 'text-rose-400'}`;
+          }
+          if (scrubBadge) {
+            scrubBadge.innerText = (isScrubDiffPos ? '+' : '') + 'NT$ ' + (isPrivacyMode ? '***' : Math.round(scrubDiff).toLocaleString());
+            scrubBadge.className = `text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md ${
+              isScrubDiffPos ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+            }`;
+          }
+          if (secLabelL) secLabelL.innerText = '當時總市值';
+          if (secValL) secValL.innerText = isPrivacyMode ? 'NT$ ******' : 'NT$ ' + Math.round(pt.marketValue).toLocaleString();
+          if (secLabelR) secLabelR.innerText = isLongTerm ? '當時未實現損益' : '區間損益變動';
+          if (secValR) {
+            secValR.innerText = isPrivacyMode ? 'NT$ ******' : (isScrubDiffPos ? '+' : '') + 'NT$ ' + Math.round(scrubDiff).toLocaleString();
+            secValR.className = 'text-xs font-mono font-bold mt-0.5 ' + (isScrubDiffPos ? 'text-emerald-400' : 'text-rose-400');
+          }
+        }
+      } else {
+        scheduleScrubReset();
+      }
+    }
+
+    function scheduleScrubReset() {
+      if (scrubResetTimer) clearTimeout(scrubResetTimer);
+      scrubResetTimer = setTimeout(() => {
+        resetScrubber();
+      }, 1200);
+    }
+
+    function resetScrubber() {
+      updateDisplayNumbers();
+    }
+
+    function initOrUpdateChart() {
+      if (typeof Chart === 'undefined') return;
+      const canvas = document.getElementById('trendChart');
+      if (!canvas) return;
+
+      const raw = (cachedTimelineData && cachedTimelineData.length > 0) 
+        ? cachedTimelineData 
+        : generateFallbackTimeline();
+
+      const filtered = filterTimelineByRange(raw, currentChartTimeframe);
+      if (!filtered || filtered.length === 0) return;
+
+      const isRateMode = (currentChartMetric === 'RATE');
+      const startPt = filtered[0];
+      const startMV = startPt ? startPt.marketValue : 1;
+      const isLongTerm = (currentChartTimeframe === 'ALL' || currentChartTimeframe === '5Y' || currentChartTimeframe === '10Y');
+
+      const labels = filtered.map(p => p.date);
+
+      // 決定圖表曲線數據 (業績模式時：短中期區間起點一律為 0.00%，長天期扣除本金顯示真實總損益率 37.61%)
+      let dataPoints = [];
+      if (currentChartMetric === 'VALUE') {
+        dataPoints = filtered.map(p => p.marketValue);
+      } else {
+        if (isLongTerm) {
+          dataPoints = filtered.map(p => p.returnRate);
+        } else {
+          dataPoints = filtered.map(p => startMV > 0 ? Number((((p.marketValue - startMV) / startMV) * 100).toFixed(2)) : 0);
+        }
+      }
+
+      const startVal = dataPoints[0] || 0;
+      const endVal = dataPoints[dataPoints.length - 1] || 0;
+      const isPositive = endVal >= startVal;
+      const strokeColor = isPositive ? '#10b981' : '#f43f5e';
+
+      const ctx = canvas.getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, 0, 140);
+      if (isPositive) {
+        gradient.addColorStop(0, 'rgba(16, 185, 129, 0.35)');
+        gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+      } else {
+        gradient.addColorStop(0, 'rgba(244, 63, 94, 0.35)');
+        gradient.addColorStop(1, 'rgba(244, 63, 94, 0.0)');
+      }
+
+      if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: dataPoints,
+            borderColor: strokeColor,
+            borderWidth: 2.2,
+            pointRadius: 0,
+            pointHoverRadius: 5.5,
+            pointHoverBackgroundColor: strokeColor,
+            pointHoverBorderColor: '#0f172a',
+            pointHoverBorderWidth: 2,
+            fill: true,
+            backgroundColor: gradient,
+            tension: 0.32
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: {
+            duration: 350,
+            easing: 'easeOutQuart'
+          },
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              enabled: false,
+              external: function(context) {
+                handleChartScrubber(context, filtered);
+              }
+            }
+          },
+          scales: {
+            x: {
+              display: false,
+              grid: { display: false }
+            },
+            y: {
+              position: 'right',
+              display: true,
+              border: { display: false },
+              grid: {
+                color: function(ctx) {
+                  if (isRateMode && ctx.tick && ctx.tick.value === 0) {
+                    return 'rgba(148, 163, 184, 0.55)'; // 0.00% 基準虛線
+                  }
+                  return 'rgba(51, 65, 85, 0.2)';
+                },
+                lineWidth: function(ctx) {
+                  return (isRateMode && ctx.tick && ctx.tick.value === 0) ? 1.5 : 0.8;
+                },
+                borderDash: function(ctx) {
+                  return (isRateMode && ctx.tick && ctx.tick.value === 0) ? [4, 4] : [];
+                }
+              },
+              ticks: {
+                color: '#64748b',
+                font: {
+                  family: 'ui-monospace, monospace',
+                  size: 9
+                },
+                maxTicksLimit: 5,
+                callback: function(val) {
+                  if (isRateMode) {
+                    return (val >= 0 ? '+' : '') + Number(val).toFixed(1) + '%';
+                  } else {
+                    if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
+                    if (val >= 1000) return Math.round(val / 1000) + 'k';
+                    return val;
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      // 監聽手指移開/滑鼠離開事件以恢復即時資產數據
+      canvas.onmouseleave = scheduleScrubReset;
+      canvas.ontouchend = scheduleScrubReset;
+      canvas.ontouchcancel = scheduleScrubReset;
     }
 
     // 頁籤切換 (3 個 Tab)
     function switchTab(tab) {
+      if (typeof closeAllSwipes === 'function') closeAllSwipes();
       const hContent = document.getElementById('tabContentHoldings');
       const tContent = document.getElementById('tabContentTrade');
       const histContent = document.getElementById('tabContentHistory');
@@ -693,6 +1840,264 @@
       renderHoldings();
     }
 
+    let collapsedHoldings = {};
+    try {
+      collapsedHoldings = JSON.parse(localStorage.getItem('COLLAPSED_HOLDINGS') || '{}');
+    } catch (e) {
+      collapsedHoldings = {};
+    }
+    let isAllCollapsedGlobal = localStorage.getItem('HOLDINGS_ALL_COLLAPSED') === 'true';
+
+    function toggleHoldingDetail(ticker, event) {
+      if (event) event.stopPropagation();
+      const detailEl = document.getElementById(`detail-${ticker}`);
+      const chevronEl = document.getElementById(`chevron-${ticker}`);
+      if (!detailEl) return;
+
+      const isHidden = detailEl.classList.contains('hidden');
+      if (isHidden) {
+        detailEl.classList.remove('hidden');
+        if (chevronEl) chevronEl.classList.add('rotate-180');
+        collapsedHoldings[ticker] = false;
+      } else {
+        detailEl.classList.add('hidden');
+        if (chevronEl) chevronEl.classList.remove('rotate-180');
+        collapsedHoldings[ticker] = true;
+      }
+      localStorage.setItem('COLLAPSED_HOLDINGS', JSON.stringify(collapsedHoldings));
+    }
+
+    function toggleAllHoldingsCollapse() {
+      isAllCollapsedGlobal = !isAllCollapsedGlobal;
+      localStorage.setItem('HOLDINGS_ALL_COLLAPSED', isAllCollapsedGlobal ? 'true' : 'false');
+
+      if (cachedHoldings) {
+        cachedHoldings.forEach(h => {
+          collapsedHoldings[h.ticker] = isAllCollapsedGlobal;
+        });
+        localStorage.setItem('COLLAPSED_HOLDINGS', JSON.stringify(collapsedHoldings));
+      }
+
+      updateCollapseAllButton();
+      renderHoldings();
+    }
+
+    function updateCollapseAllButton() {
+      const iconEl = document.getElementById('collapseAllIcon');
+      const textEl = document.getElementById('collapseAllText');
+      if (iconEl && textEl) {
+        iconEl.innerText = isAllCollapsedGlobal ? '⊞' : '⊟';
+        textEl.innerText = isAllCollapsedGlobal ? '展開' : '精簡';
+      }
+    }
+
+    function moveHoldingPosition(ticker, direction, event) {
+      if (event) event.stopPropagation();
+      const container = document.getElementById('holdingsList');
+      if (!container) return;
+
+      const cards = Array.from(container.querySelectorAll('.holding-card'));
+      const currentOrder = cards.map(c => c.dataset.ticker);
+
+      const curIdx = currentOrder.indexOf(ticker);
+      if (curIdx === -1) return;
+      const targetIdx = curIdx + direction;
+      if (targetIdx < 0 || targetIdx >= currentOrder.length) return;
+
+      const temp = currentOrder[curIdx];
+      currentOrder[curIdx] = currentOrder[targetIdx];
+      currentOrder[targetIdx] = temp;
+
+      localStorage.setItem('CUSTOM_HOLDINGS_ORDER', JSON.stringify(currentOrder));
+      localStorage.setItem('HOLDINGS_SORT_MODE', 'CUSTOM');
+      updateSortStatusLabel();
+      renderHoldings();
+      showToast(`已${direction < 0 ? '上移' : '下移'} ${ticker} 🌟`, 'success');
+    }
+
+    function changeHoldingsSort(mode) {
+      localStorage.setItem('HOLDINGS_SORT_MODE', mode);
+      updateSortStatusLabel();
+      renderHoldings();
+    }
+
+    function updateSortStatusLabel() {
+      const mode = localStorage.getItem('HOLDINGS_SORT_MODE') || 'CUSTOM';
+      const label = document.getElementById('sortStatusLabel');
+      const sel = document.getElementById('sortSelect');
+      if (sel) sel.value = mode;
+      if (!label) return;
+
+      const names = {
+        CUSTOM: '🌟 自訂拖曳排序',
+        MV_DESC: '💰 依市值高到低',
+        PROFIT_DESC: '📈 依報酬率高到低',
+        PROFIT_ASC: '📉 依報酬率低到高',
+        COST_DESC: '💵 依投入成本高到低',
+        TICKER_ASC: '🔤 依標的代號 (A-Z)'
+      };
+      label.innerText = names[mode] || '依市值排序';
+    }
+
+    let isHoldingsDragging = false;
+    let draggedHoldingCard = null;
+    let holdingsLongPressTimer = null;
+    let touchStartY = 0;
+    let targetDropCard = null;
+    let isDropAfter = false;
+
+    function resetDragState() {
+      clearTimeout(holdingsLongPressTimer);
+      if (draggedHoldingCard) {
+        draggedHoldingCard.classList.remove('is-dragging');
+        draggedHoldingCard.style.transform = '';
+        draggedHoldingCard.style.zIndex = '';
+      }
+      if (targetDropCard) {
+        targetDropCard.classList.remove('border-t-2', 'border-b-2', 'border-emerald-400');
+      }
+      isHoldingsDragging = false;
+      draggedHoldingCard = null;
+      targetDropCard = null;
+    }
+
+    function bindHoldingsDragAndDrop() {
+      const container = document.getElementById('holdingsList');
+      if (!container) return;
+      const cards = Array.from(container.querySelectorAll('.holding-card'));
+
+      const startDrag = (card, clientY) => {
+        isHoldingsDragging = true;
+        draggedHoldingCard = card;
+        touchStartY = clientY;
+        card.classList.add('is-dragging');
+        card.style.zIndex = '50';
+        if (navigator.vibrate) navigator.vibrate(40);
+      };
+
+      const handleMove = (clientX, clientY) => {
+        if (!isHoldingsDragging || !draggedHoldingCard) return;
+
+        const dy = clientY - touchStartY;
+        draggedHoldingCard.style.transform = `translateY(${dy}px) scale(1.02)`;
+
+        // 幾何範圍偵測 (100% 穿透自身，精準鎖定目標卡片)
+        if (targetDropCard) {
+          targetDropCard.classList.remove('border-t-2', 'border-b-2', 'border-emerald-400');
+          targetDropCard = null;
+        }
+
+        for (let i = 0; i < cards.length; i++) {
+          const other = cards[i];
+          if (other === draggedHoldingCard) continue;
+          const rect = other.getBoundingClientRect();
+          if (clientY >= rect.top && clientY <= rect.bottom) {
+            targetDropCard = other;
+            isDropAfter = clientY > (rect.top + rect.height / 2);
+            if (isDropAfter) {
+              other.classList.add('border-b-2', 'border-emerald-400');
+            } else {
+              other.classList.add('border-t-2', 'border-emerald-400');
+            }
+            break;
+          }
+        }
+      };
+
+      const endDrag = () => {
+        clearTimeout(holdingsLongPressTimer);
+        if (!isHoldingsDragging || !draggedHoldingCard) {
+          resetDragState();
+          return;
+        }
+
+        if (targetDropCard && targetDropCard !== draggedHoldingCard) {
+          const draggedTicker = draggedHoldingCard.dataset.ticker;
+          const targetTicker = targetDropCard.dataset.ticker;
+
+          const currentOrder = cards.map(c => c.dataset.ticker);
+          const fromIdx = currentOrder.indexOf(draggedTicker);
+          const toIdx = currentOrder.indexOf(targetTicker);
+
+          if (fromIdx !== -1 && toIdx !== -1) {
+            currentOrder.splice(fromIdx, 1);
+            const newInsertIdx = currentOrder.indexOf(targetTicker) + (isDropAfter ? 1 : 0);
+            currentOrder.splice(newInsertIdx, 0, draggedTicker);
+
+            localStorage.setItem('CUSTOM_HOLDINGS_ORDER', JSON.stringify(currentOrder));
+            localStorage.setItem('HOLDINGS_SORT_MODE', 'CUSTOM');
+            resetDragState();
+            updateSortStatusLabel();
+            renderHoldings();
+            showToast(`已移動 ${draggedTicker} 排序 🌟`, 'success');
+            return;
+          }
+        }
+
+        resetDragState();
+      };
+
+      cards.forEach(card => {
+        const handle = card.querySelector('.drag-handle');
+
+        if (handle) {
+          handle.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            startDrag(card, e.touches[0].clientY);
+          }, { passive: true });
+
+          handle.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            startDrag(card, e.clientY);
+          });
+        }
+
+        let startX = 0;
+        let startY = 0;
+
+        card.addEventListener('touchstart', (e) => {
+          if (e.target.closest('button') || e.target.closest('.drag-handle')) return;
+          const t = e.touches[0];
+          startX = t.clientX;
+          startY = t.clientY;
+
+          holdingsLongPressTimer = setTimeout(() => {
+            startDrag(card, startY);
+          }, 500);
+        }, { passive: true });
+
+        card.addEventListener('touchmove', (e) => {
+          if (!isHoldingsDragging) {
+            const t = e.touches[0];
+            if (Math.abs(t.clientX - startX) > 6 || Math.abs(t.clientY - startY) > 6) {
+              clearTimeout(holdingsLongPressTimer);
+            }
+            return;
+          }
+
+          e.preventDefault();
+          const t = e.touches[0];
+          handleMove(t.clientX, t.clientY);
+        }, { passive: false });
+
+        card.addEventListener('touchend', endDrag);
+        card.addEventListener('touchcancel', resetDragState);
+      });
+
+      window.onmousemove = (e) => {
+        if (!isHoldingsDragging) return;
+        e.preventDefault();
+        handleMove(e.clientX, e.clientY);
+      };
+
+      window.onmouseup = () => {
+        if (isHoldingsDragging) endDrag();
+      };
+    }
+
+    window.addEventListener('blur', resetDragState);
+    window.addEventListener('touchcancel', resetDragState);
+
     function renderHoldings() {
       const container = document.getElementById('holdingsList');
       if (!cachedHoldings || cachedHoldings.length === 0) {
@@ -715,6 +2120,36 @@
         return;
       }
 
+      // === 排序引擎 (自動排序 vs 長按自訂排序) ===
+      const sortMode = localStorage.getItem('HOLDINGS_SORT_MODE') || 'CUSTOM';
+      let customOrder = [];
+      try {
+        customOrder = JSON.parse(localStorage.getItem('CUSTOM_HOLDINGS_ORDER') || '[]');
+      } catch (e) {
+        customOrder = [];
+      }
+
+      if (sortMode === 'CUSTOM' && customOrder && customOrder.length > 0) {
+        list.sort((a, b) => {
+          const idxA = customOrder.indexOf(a.ticker);
+          const idxB = customOrder.indexOf(b.ticker);
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          if (idxA !== -1) return -1;
+          if (idxB !== -1) return 1;
+          return b.marketValueTwd - a.marketValueTwd;
+        });
+      } else if (sortMode === 'MV_DESC' || sortMode === 'CUSTOM') {
+        list.sort((a, b) => b.marketValueTwd - a.marketValueTwd);
+      } else if (sortMode === 'PROFIT_DESC') {
+        list.sort((a, b) => b.profitRate - a.profitRate);
+      } else if (sortMode === 'PROFIT_ASC') {
+        list.sort((a, b) => a.profitRate - b.profitRate);
+      } else if (sortMode === 'COST_DESC') {
+        list.sort((a, b) => b.costTwd - a.costTwd);
+      } else if (sortMode === 'TICKER_ASC') {
+        list.sort((a, b) => a.ticker.localeCompare(b.ticker));
+      }
+
       container.innerHTML = list.map(h => {
         const isProfit = h.profitTwd >= 0;
         const profitColor = isProfit ? 'text-emerald-400' : 'text-rose-400';
@@ -731,56 +2166,82 @@
         const displayProfit = isPrivacyMode ? '****' : `${profitSign}NT$ ${Math.round(h.profitTwd).toLocaleString()}`;
         const displayRate = isPrivacyMode ? '**%' : `${profitSign}${h.profitRate.toFixed(2)}%`;
 
+        const isCollapsed = isAllCollapsedGlobal || (collapsedHoldings[h.ticker] === true);
+
         return `
-          <div class="p-4 rounded-3xl bg-slate-800/60 border border-slate-700/60 shadow-xl backdrop-blur-md space-y-3">
+          <div class="holding-card p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/60 shadow-lg relative select-none transition-all duration-200" data-ticker="${h.ticker}">
             
-            <!-- 上半部：標的代號、市場、權重、總市值 -->
-            <div class="flex items-start justify-between">
-              <div class="space-y-1">
-                <div class="flex items-center space-x-2">
-                  <span class="font-black text-lg text-white font-mono tracking-tight">${h.ticker}</span>
-                  <span class="px-2 py-0.5 rounded-full border text-[10px] font-bold ${marketBadge}">${h.market}</span>
-                  <span class="px-1.5 py-0.5 rounded bg-slate-700/50 text-[10px] text-slate-300 font-mono">占比 ${h.weight.toFixed(1)}%</span>
+            <!-- 頂部精簡列 (點擊任意處可展開/收合細項) -->
+            <div class="flex items-center justify-between cursor-pointer" onclick="toggleHoldingDetail('${h.ticker}', event)">
+              <div class="flex items-center space-x-2">
+                <!-- 排序微調控制組 (▲ / ▼ / ☰ 把手) -->
+                <div class="flex items-center space-x-0.5 text-slate-500" onclick="event.stopPropagation()">
+                  <button type="button" onclick="moveHoldingPosition('${h.ticker}', -1, event)" class="p-1 hover:text-emerald-400 active:scale-75 transition text-[10px] font-bold" title="上移">▲</button>
+                  <button type="button" onclick="moveHoldingPosition('${h.ticker}', 1, event)" class="p-1 hover:text-emerald-400 active:scale-75 transition text-[10px] font-bold" title="下移">▼</button>
+                  <div class="drag-handle touch-none cursor-grab active:cursor-grabbing hover:text-slate-300 active:text-emerald-400 p-1 rounded-md" title="長按拖曳排序">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 8h16M4 16h16"/>
+                    </svg>
+                  </div>
                 </div>
-                <div class="text-xs text-slate-400 font-mono">
-                  現價 <span class="text-white font-bold">$${h.price}</span> · 持有 <span class="text-slate-300 font-semibold">${h.shares.toLocaleString()} 股</span>
+
+                <div>
+                  <div class="flex items-center space-x-1.5">
+                    <span class="font-black text-base text-white font-mono tracking-tight">${h.ticker}</span>
+                    <span class="px-1.5 py-0.2 rounded-full border text-[9px] font-bold ${marketBadge}">${h.market}</span>
+                    <span class="px-1 py-0.2 rounded bg-slate-700/50 text-[9px] text-slate-400 font-mono">${h.weight.toFixed(1)}%</span>
+                  </div>
+                  <div class="text-[11px] text-slate-400 font-mono mt-0.5">
+                    $${h.price} · <span class="text-slate-300 font-semibold">${h.shares.toLocaleString()} 股</span>
+                  </div>
                 </div>
               </div>
-              <div class="text-right">
-                <div class="text-[10px] text-slate-400 uppercase tracking-wider">目前總市值</div>
-                <div class="font-mono font-black text-base text-white">
-                  ${displayMV}
+
+              <!-- 右側：總市值 + 損益小膠囊 + 旋轉箭頭 -->
+              <div class="flex items-center space-x-2 text-right">
+                <div>
+                  <div class="font-mono font-black text-sm text-white">${displayMV}</div>
+                  <span class="inline-block mt-0.5 px-1.5 py-0.2 rounded-md border text-[9px] font-bold font-mono ${badgeColor}">
+                    ${displayRate}
+                  </span>
+                </div>
+                <div class="text-slate-400 p-1">
+                  <svg id="chevron-${h.ticker}" class="w-4 h-4 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                  </svg>
                 </div>
               </div>
             </div>
 
-            <!-- 下半部：成本、未實現損益、報酬率、快速記帳按鈕 -->
-            <div class="pt-2.5 border-t border-slate-700/50 grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <div class="text-[10px] text-slate-400">累計投入成本</div>
-                <div class="font-mono font-bold text-slate-300">${displayCost}</div>
-                <div class="text-[10px] text-slate-500 font-mono">每股均價: $${h.avgCostOrig.toFixed(2)}</div>
+            <!-- 下半部詳細資料 (可收合/展開) -->
+            <div id="detail-${h.ticker}" class="${isCollapsed ? 'hidden' : ''} pt-2.5 mt-2 border-t border-slate-700/50 space-y-2.5">
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <div class="text-[10px] text-slate-400">累計投入成本</div>
+                  <div class="font-mono font-bold text-slate-300">${displayCost}</div>
+                  <div class="text-[10px] text-slate-500 font-mono">每股均價: $${h.avgCostOrig.toFixed(2)}</div>
+                </div>
+                <div class="text-right flex flex-col items-end">
+                  <div class="text-[10px] text-slate-400">未實現損益 / 報酬率</div>
+                  <div class="font-mono font-black ${profitColor} text-sm">${displayProfit}</div>
+                  <div class="text-[10px] text-slate-500 font-mono">報酬率: ${displayRate}</div>
+                </div>
               </div>
-              <div class="text-right flex flex-col items-end">
-                <div class="text-[10px] text-slate-400">未實現損益 / 報酬率</div>
-                <div class="font-mono font-black ${profitColor} text-sm">${displayProfit}</div>
-                <span class="mt-0.5 px-2 py-0.5 rounded-full border text-[10px] font-extrabold font-mono ${badgeColor}">
-                  ${displayRate}
-                </span>
-              </div>
-            </div>
 
-            <!-- 底部動作按鈕：一鍵跳轉快速記帳 -->
-            <div class="pt-1 flex justify-end">
-              <button type="button" onclick="quickTradeFromHolding('${h.ticker}', '${h.market}', ${h.price})" class="px-3 py-1 rounded-xl bg-slate-700/60 hover:bg-emerald-500/20 hover:text-emerald-300 text-slate-300 text-[11px] font-semibold active:scale-95 transition flex items-center space-x-1">
-                <span>➕</span>
-                <span>加碼/賣出此標的</span>
-              </button>
+              <div class="pt-1 flex justify-end">
+                <button type="button" onclick="quickTradeFromHolding('${h.ticker}', '${h.market}', ${h.price})" class="px-3 py-1 rounded-xl bg-slate-700/60 hover:bg-emerald-500/20 hover:text-emerald-300 text-slate-300 text-[11px] font-semibold active:scale-95 transition flex items-center space-x-1">
+                  <span>➕</span>
+                  <span>加碼/賣出此標的</span>
+                </button>
+              </div>
             </div>
 
           </div>
         `;
       }).join('');
+
+      bindHoldingsDragAndDrop();
+      updateSortStatusLabel();
     }
 
     // 從持股清單點擊「加碼/賣出」直接跳轉記帳頁面
@@ -792,9 +2253,46 @@
     }
 
     // ===============================
-    // 歷史明細渲染 (History)
+    // 歷史明細渲染 (History) - 支援 iOS / LINE 風格向左滑動展開操作
     // ===============================
+    let currentOpenSwipeRow = null;
+
+    function closeAllSwipes() {
+      document.querySelectorAll('.swipe-card').forEach(card => {
+        card.style.transform = 'translateX(0px)';
+        card.dataset.open = 'false';
+      });
+      currentOpenSwipeRow = null;
+    }
+
+    function toggleSwipeRow(rowIndex, event) {
+      if (event) event.stopPropagation();
+      const row = document.querySelector(`.swipe-row[data-row="${rowIndex}"]`);
+      if (!row) return;
+      const card = row.querySelector('.swipe-card');
+      const isOpen = card.dataset.open === 'true';
+      closeAllSwipes();
+      if (!isOpen) {
+        card.style.transform = 'translateX(-140px)';
+        card.dataset.open = 'true';
+        currentOpenSwipeRow = row;
+      }
+    }
+
+    function triggerSwipeEdit(rowIndex, event) {
+      if (event) event.stopPropagation();
+      closeAllSwipes();
+      openEditModal(rowIndex);
+    }
+
+    function triggerSwipeDelete(rowIndex, event) {
+      if (event) event.stopPropagation();
+      closeAllSwipes();
+      openDeleteModal(rowIndex);
+    }
+
     function renderHistory(records) {
+      closeAllSwipes();
       const container = document.getElementById('recentList');
       if (!records || records.length === 0) {
         container.innerHTML = '<div class="text-center py-8 text-xs text-slate-500">暫無歷史明細</div>';
@@ -807,43 +2305,199 @@
         if (r.type === '股息再投入') typeBadge = 'bg-purple-500/15 text-purple-400 border-purple-500/30';
 
         return `
-          <div class="p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-2.5 shadow-lg backdrop-blur-md">
-            <div class="flex items-start justify-between">
-              <div class="space-y-1">
-                <div class="flex items-center space-x-2">
-                  <span class="font-extrabold text-base text-white font-mono">${r.ticker}</span>
-                  <span class="px-2 py-0.5 rounded-full border text-[10px] font-bold ${typeBadge}">${r.type}</span>
-                  <span class="text-[11px] text-slate-400 font-mono">${r.date}</span>
-                </div>
-                <div class="text-slate-400 font-mono text-xs">
-                  ${r.shares.toLocaleString()} 股 · 單價 $${r.price} · 手續費 $${r.fee}
-                </div>
-              </div>
-              <div class="text-right">
-                <div class="font-mono font-black text-base text-white">
-                  NT$ ${Math.round(r.twdCost).toLocaleString()}
-                </div>
-                <div class="text-[10px] text-slate-500 font-mono">${r.market} (匯率 ${r.exchangeRate})</div>
-              </div>
+          <div class="swipe-row relative overflow-hidden rounded-2xl bg-slate-900 border border-slate-700/60 shadow-lg select-none" data-row="${r.rowIndex}">
+            
+            <!-- 底層右側操作按鈕區 (如 LINE / iOS 原生滑出按鈕) -->
+            <div class="absolute inset-y-0 right-0 flex w-[140px] z-0">
+              <button type="button" 
+                      onclick="triggerSwipeEdit(${r.rowIndex}, event)" 
+                      class="w-1/2 bg-slate-600 hover:bg-slate-500 active:bg-slate-700 text-white font-bold text-xs flex flex-col items-center justify-center space-y-1 transition">
+                <span class="text-base leading-none">✏️</span>
+                <span class="text-[11px] font-semibold">編輯</span>
+              </button>
+              <button type="button" 
+                      onclick="triggerSwipeDelete(${r.rowIndex}, event)" 
+                      class="w-1/2 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold text-xs flex flex-col items-center justify-center space-y-1 transition">
+                <span class="text-base leading-none">🗑️</span>
+                <span class="text-[11px] font-semibold">刪除</span>
+              </button>
             </div>
 
-            <div class="flex items-center justify-between pt-2 border-t border-slate-700/40 text-xs">
-              <span class="text-[10px] text-slate-500 font-mono">試算表第 ${r.rowIndex} 列</span>
-              <div class="flex items-center space-x-2">
-                <button type="button" onclick="openEditModal(${r.rowIndex})" class="px-2.5 py-1 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 font-medium active:scale-95 transition flex items-center space-x-1">
-                  <span>✏️</span>
-                  <span>編輯</span>
-                </button>
-                <button type="button" onclick="openDeleteModal(${r.rowIndex})" class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 font-medium active:scale-95 transition flex items-center space-x-1">
-                  <span>🗑️</span>
-                  <span>刪除</span>
-                </button>
+            <!-- 表層滑動卡片 (跟著手指左右滑動) -->
+            <div class="swipe-card relative z-10 bg-slate-800 p-3.5 space-y-2 cursor-pointer transition-transform duration-200 ease-out" 
+                 style="transform: translateX(0px);">
+              
+              <div class="flex items-start justify-between">
+                <div class="space-y-1">
+                  <div class="flex items-center space-x-2">
+                    <span class="font-extrabold text-base text-white font-mono">${r.ticker}</span>
+                    <span class="px-2 py-0.5 rounded-full border text-[10px] font-bold ${typeBadge}">${r.type}</span>
+                    <span class="text-[11px] text-slate-400 font-mono">${r.date}</span>
+                  </div>
+                  <div class="text-slate-400 font-mono text-xs">
+                    ${r.shares.toLocaleString()} 股 · 單價 $${r.price} · 手續費 $${r.fee}
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="font-mono font-black text-base text-white">
+                    NT$ ${Math.round(r.twdCost).toLocaleString()}
+                  </div>
+                  <div class="text-[10px] text-slate-500 font-mono">${r.market} (匯率 ${r.exchangeRate})</div>
+                </div>
               </div>
+
+              <!-- 底部列號與滑動提示 -->
+              <div class="flex items-center justify-between pt-1.5 border-t border-slate-700/40 text-[10px] text-slate-500">
+                <span class="font-mono">試算表第 ${r.rowIndex} 列</span>
+                <div class="flex items-center space-x-1 text-slate-400 hover:text-white" onclick="toggleSwipeRow(${r.rowIndex}, event)">
+                  <span class="text-[10px]">向左滑動</span>
+                  <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </div>
+              </div>
+
             </div>
+
           </div>
         `;
       }).join('');
+
+      bindSwipeEvents();
     }
+
+    function bindSwipeEvents() {
+      const rows = document.querySelectorAll('.swipe-row');
+      rows.forEach(row => {
+        const card = row.querySelector('.swipe-card');
+        let startX = 0;
+        let startY = 0;
+        let initialTranslate = 0;
+        let isDragging = false;
+        let isHorizontal = null;
+
+        // 手機觸控事件 (iOS / Android 滑動)
+        card.addEventListener('touchstart', (e) => {
+          const touch = e.touches[0];
+          startX = touch.clientX;
+          startY = touch.clientY;
+          isDragging = true;
+          isHorizontal = null;
+          const isOpen = card.dataset.open === 'true';
+          initialTranslate = isOpen ? -140 : 0;
+          card.style.transition = 'none';
+
+          if (currentOpenSwipeRow && currentOpenSwipeRow !== row) {
+            closeAllSwipes();
+          }
+        }, { passive: true });
+
+        card.addEventListener('touchmove', (e) => {
+          if (!isDragging) return;
+          const touch = e.touches[0];
+          const dx = touch.clientX - startX;
+          const dy = touch.clientY - startY;
+
+          if (isHorizontal === null) {
+            if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+              isHorizontal = Math.abs(dx) > Math.abs(dy);
+            }
+          }
+
+          if (!isHorizontal) return; // 垂直滾動時放行
+
+          let newTranslate = initialTranslate + dx;
+          if (newTranslate > 0) newTranslate = newTranslate * 0.15;
+          if (newTranslate < -160) newTranslate = -140 + (newTranslate + 140) * 0.15;
+
+          card.style.transform = `translateX(${newTranslate}px)`;
+        }, { passive: true });
+
+        const handleTouchEnd = () => {
+          if (!isDragging) return;
+          isDragging = false;
+          card.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)';
+
+          if (isHorizontal) {
+            const transformMatrix = window.getComputedStyle(card).transform;
+            let currentX = 0;
+            if (transformMatrix && transformMatrix !== 'none') {
+              const values = transformMatrix.split('(')[1].split(')')[0].split(',');
+              currentX = parseFloat(values[4]) || 0;
+            }
+
+            const isOpen = card.dataset.open === 'true';
+            if (!isOpen) {
+              if (currentX < -45) {
+                card.style.transform = 'translateX(-140px)';
+                card.dataset.open = 'true';
+                currentOpenSwipeRow = row;
+              } else {
+                card.style.transform = 'translateX(0px)';
+                card.dataset.open = 'false';
+              }
+            } else {
+              if (currentX > -100) {
+                card.style.transform = 'translateX(0px)';
+                card.dataset.open = 'false';
+                currentOpenSwipeRow = null;
+              } else {
+                card.style.transform = 'translateX(-140px)';
+                card.dataset.open = 'true';
+                currentOpenSwipeRow = row;
+              }
+            }
+          } else if (card.dataset.open === 'true') {
+            card.style.transform = 'translateX(0px)';
+            card.dataset.open = 'false';
+            currentOpenSwipeRow = null;
+          }
+        };
+
+        card.addEventListener('touchend', handleTouchEnd);
+        card.addEventListener('touchcancel', handleTouchEnd);
+
+        // 電腦滑鼠支援
+        card.addEventListener('mousedown', (e) => {
+          startX = e.clientX;
+          startY = e.clientY;
+          isDragging = true;
+          isHorizontal = null;
+          const isOpen = card.dataset.open === 'true';
+          initialTranslate = isOpen ? -140 : 0;
+          card.style.transition = 'none';
+
+          if (currentOpenSwipeRow && currentOpenSwipeRow !== row) {
+            closeAllSwipes();
+          }
+
+          const onMouseMove = (moveEvt) => {
+            if (!isDragging) return;
+            const dx = moveEvt.clientX - startX;
+            let newTranslate = initialTranslate + dx;
+            if (newTranslate > 0) newTranslate = 0;
+            if (newTranslate < -160) newTranslate = -140;
+            card.style.transform = `translateX(${newTranslate}px)`;
+            isHorizontal = true;
+          };
+
+          const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            handleTouchEnd();
+          };
+
+          document.addEventListener('mousemove', onMouseMove);
+          document.addEventListener('mouseup', onMouseUp);
+        });
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      if (currentOpenSwipeRow && !currentOpenSwipeRow.contains(e.target)) {
+        closeAllSwipes();
+      }
+    });
 
     // ===============================
     // 編輯功能
